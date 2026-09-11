@@ -1,0 +1,24 @@
+{
+  "name": "tillkit-site",
+  "version": "0.0.1",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "hono": "^4.0.0",
+    "pocketbase": "^0.27.0",
+    "stripe": "^14.10.0",
+    "zod": "^3.22.4",
+    "@tillkit/core": "file:./packages/core",
+    "@tillkit/server": "file:./packages/server",
+    "@tillkit/adapter-pocketbase": "file:./packages/adapter-pocketbase",
+    "@tillkit/integration-stripe": "file:./packages/integration-stripe",
+    "@tillkit/integration-search": "file:./packages/integration-search",
+    "@tillkit/integration-paypal": "file:./packages/integration-paypal"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3"
+  }
+}

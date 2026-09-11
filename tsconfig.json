@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "types": ["node"],
+    "strict": true,
+    "outDir": "dist",
+    "noEmit": false,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "resolveJsonModule": true,
+    "paths": {
+      "@tillkit/core": ["./packages/core/dist/index.d.ts"],
+      "@tillkit/server": ["./packages/server/dist/index.d.ts"],
+      "@tillkit/adapter-pocketbase": ["./packages/adapter-pocketbase/dist/index.d.ts"],
+      "@tillkit/integration-stripe": ["./packages/integration-stripe/dist/index.d.ts"],
+      "@tillkit/integration-search": ["./packages/integration-search/dist/index.d.ts"],
+      "@tillkit/integration-paypal": ["./packages/integration-paypal/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}
