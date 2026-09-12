@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import { Hono } from 'hono';
 import { createAdminRoutes, createSubscriptionRoutes } from '@tillkit/server';
 import type { Cart, DatabaseAdapter, Product } from '@tillkit/core';
@@ -8,11 +9,11 @@ import {
   layout,
   takeFlash,
 } from './app-context.js';
+import type { SearchService } from '@tillkit/integration-search';
 import type { SubscriptionProvider } from '@tillkit/core';
 import { checkoutRouter } from './routes/checkout.js';
 import { webhooksRouter } from './routes/webhooks.js';
 
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -35,187 +36,69 @@ export function createStarterApp(deps: {
     const html = layout(
       'Open-source e-commerce starter',
       `
-      <!-- Hero Section -->
-      <section class="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <div class="absolute inset-0 opacity-20" style="background-image: url(&quot;data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.05'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E&quot;)"></div>
-        <div class="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 sm:py-32">
-          <div class="text-center">
-            <h1 class="text-5xl sm:text-6xl font-extrabold text-white tracking-tight mb-6">
-              Build your store
-              <span class="block text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-emerald-400 mt-2">
-                in days, not weeks
-              </span>
-            </h1>
-            <p class="text-xl text-slate-300 max-w-2xl mx-auto mb-10">
-              TillKit is an open-source e-commerce starter kit built with Hono, HTMX, and PocketBase. 
-              Free to use. Production-ready. Deployed in minutes.
-            </p>
-            <div class="flex flex-col sm:flex-row gap-4 justify-center">
-              <a href="/products" class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition shadow-lg shadow-blue-500/25">
-                🛒 Try Live Demo
-              </a>
-              <a href="https://github.com/saul-goode/tillkit" class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-slate-900 bg-white rounded-xl hover:bg-slate-100 transition shadow-lg">
-                ⭐ View on GitHub
-              </a>
-            </div>
-          </div>
+      <div class="hero" style="text-align: center; padding: 60px 20px;">
+        <h1 style="font-size: 2.5rem; font-weight: 700; margin-bottom: 16px; letter-spacing: -0.02em;">
+          TillKit
+        </h1>
+        <p style="font-size: 1.15rem; color: var(--text-muted); max-width: 560px; margin: 0 auto 32px;">
+          An open-source e-commerce starter kit built with Hono, HTMX, and PocketBase. 
+          Free to use. Easy to deploy.
+        </p>
+        <div style="display: flex; gap: 12px; justify-content: center; flex-wrap: wrap;">
+          <a href="/products" class="button-primary" style="font-size: 1.05rem; padding: 14px 28px;">
+            🛒 See Live Demo
+          </a>
+          <a href="https://github.com/yourname/tillkit" class="button-primary" style="font-size: 1.05rem; padding: 14px 28px; background: #1a1a1a;">
+            ⭐ View on GitHub
+          </a>
         </div>
-      </section>
+      </div>
 
-      <!-- Features Grid -->
-      <section class="py-20 bg-white">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="text-center mb-16">
-            <h2 class="text-3xl font-bold text-slate-900 mb-4">Everything you need to sell</h2>
-            <p class="text-lg text-slate-600 max-w-2xl mx-auto">
-              Built-in features that would take weeks to build yourself
-            </p>
-          </div>
-          <div class="grid md:grid-cols-3 gap-8">
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">🛒</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">Shopping Cart</h3>
-              <p class="text-slate-600">Persistent carts, guest checkout, and seamless checkout flow</p>
-            </div>
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">💳</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">Stripe Integration</h3>
-              <p class="text-slate-600">Payments, subscriptions, and webhooks ready to go</p>
-            </div>
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">📦</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">Product Management</h3>
-              <p class="text-slate-600">Full CRUD with categories, variants, and inventory</p>
-            </div>
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">🔐</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">Authentication</h3>
-              <p class="text-slate-600">User accounts, order history, and secure sessions</p>
-            </div>
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">⚡</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">HTMX Powered</h3>
-              <p class="text-slate-600">Dynamic interactions without JavaScript complexity</p>
-            </div>
-            <div class="p-6 bg-slate-50 rounded-2xl">
-              <div class="text-4xl mb-4">🚀</div>
-              <h3 class="text-xl font-semibold text-slate-900 mb-2">One-Click Deploy</h3>
-              <p class="text-slate-600">Deploy to Vercel, Render, or any Node.js host</p>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Pricing Section -->
-      <section class="py-20 bg-slate-50">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="text-center mb-16">
-            <h2 class="text-3xl font-bold text-slate-900 mb-4">Need a custom store?</h2>
-            <p class="text-lg text-slate-600 max-w-2xl mx-auto">
-              I build production-ready e-commerce sites on top of TillKit. 
-              Custom themes, integrations, deployments — done for you.
-            </p>
-          </div>
-          <div class="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            <!-- Basic -->
-            <div class="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
-              <div class="text-4xl font-bold text-slate-900 mb-2">$500</div>
-              <div class="text-slate-600 font-medium mb-6">Basic Setup</div>
-              <ul class="space-y-3 mb-8">
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Deploy & configure
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Product setup
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Stripe connection
-                </li>
-              </ul>
-              <a href="mailto:hello@tillkit.dev?subject=Basic+Setup" class="block text-center py-3 px-6 rounded-lg border-2 border-slate-200 text-slate-700 font-semibold hover:border-slate-300 transition">
-                Get Started
-              </a>
-            </div>
-
-            <!-- Custom -->
-            <div class="bg-white rounded-2xl p-8 shadow-xl border-2 border-blue-500 relative">
-              <div class="absolute -top-4 left-1/2 -translate-x-1/2 bg-blue-500 text-white px-4 py-1 rounded-full text-sm font-semibold">
-                Most Popular
-              </div>
-              <div class="text-4xl font-bold text-slate-900 mb-2">$2,000</div>
-              <div class="text-slate-600 font-medium mb-6">Custom Store</div>
-              <ul class="space-y-3 mb-8">
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Everything in Basic
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Custom theme design
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Custom integrations
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Full deployment
-                </li>
-              </ul>
-              <a href="mailto:hello@tillkit.dev?subject=Custom+Store" class="block text-center py-3 px-6 rounded-lg bg-blue-600 text-white font-semibold hover:bg-blue-700 transition">
-                Get Started
-              </a>
-            </div>
-
-            <!-- Ongoing -->
-            <div class="bg-white rounded-2xl p-8 shadow-sm border border-slate-200">
-              <div class="text-4xl font-bold text-slate-900 mb-2">$300<span class="text-lg text-slate-500 font-normal">/mo</span></div>
-              <div class="text-slate-600 font-medium mb-6">Ongoing Care</div>
-              <ul class="space-y-3 mb-8">
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Hosting included
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Security updates
-                </li>
-                <li class="flex items-center text-slate-600">
-                  <span class="text-green-500 mr-2">✓</span> Maintenance & support
-                </li>
-              </ul>
-              <a href="mailto:hello@tillkit.dev?subject=Ongoing+Care" class="block text-center py-3 px-6 rounded-lg border-2 border-slate-200 text-slate-700 font-semibold hover:border-slate-300 transition">
-                Get Started
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Products Section -->
-      <section class="py-20 bg-white">
-        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div class="text-center mb-12">
-            <h2 class="text-3xl font-bold text-slate-900 mb-2">Featured Products</h2>
-            <p class="text-slate-600">This demo store was built with TillKit</p>
-          </div>
-          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-            ${products.items.map((p: Product) => renderProductCard(p)).join('')}
-          </div>
-        </div>
-      </section>
-
-      <!-- CTA Section -->
-      <section class="py-20 bg-slate-900">
-        <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-          <h2 class="text-3xl font-bold text-white mb-4">Ready to start building?</h2>
-          <p class="text-slate-300 mb-8 text-lg">
-            Get started with TillKit today — it's free, open source, and ready to deploy.
+      <div style="background: var(--bg-muted); padding: 60px 20px; margin: 0 -20px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div style="max-width: 800px; margin: 0 auto; text-align: center;">
+          <h2 style="font-size: 1.5rem; margin-bottom: 12px;">Need a custom store?</h2>
+          <p style="color: var(--text-muted); margin-bottom: 24px;">
+            I build production-ready e-commerce sites on top of TillKit. 
+            Custom themes, integrations, deployments — done for you.
           </p>
-          <div class="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="https://github.com/saul-goode/tillkit" class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-slate-900 bg-white rounded-xl hover:bg-slate-100 transition">
-              ⭐ Star on GitHub
-            </a>
-            <a href="mailto:hello@tillkit.dev" class="inline-flex items-center justify-center px-8 py-4 text-lg font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 transition">
-              📧 Contact Me
-            </a>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; max-width: 600px; margin: 0 auto;">
+            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center;">
+              <div style="font-size: 1.3rem; font-weight: 700;">$500</div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Basic Setup</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+                Deploy + configure products + Stripe connect
+              </div>
+            </div>
+            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center; border: 2px solid var(--primary);">
+              <div style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">$2,000</div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Custom Store</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+                Custom theme, integrations, full deployment
+              </div>
+            </div>
+            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center;">
+              <div style="font-size: 1.3rem; font-weight: 700;">$300/mo</div>
+              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Ongoing Care</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
+                Hosting, updates, maintenance
+              </div>
+            </div>
           </div>
+          <a href="mailto:hello@tillkit.dev" style="display: inline-block; margin-top: 24px; color: var(--primary); font-weight: 500;">
+            hello@tillkit.dev →
+          </a>
         </div>
-      </section>
+      </div>
+
+      <div style="padding: 40px 20px; text-align: center;">
+        <h2 style="font-size: 1.5rem; margin-bottom: 8px;">Featured Products</h2>
+        <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.9rem;">
+          This demo store was built with TillKit
+        </p>
+        <div class="products">
+          ${products.items.map((p: Product) => renderProductCard(p)).join('')}
+        </div>
+      </div>
     `,
     );
     return c.html(html);
@@ -245,30 +128,18 @@ export function createStarterApp(deps: {
     const html = layout(
       'Products',
       `
-      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
-          <h1 class="text-3xl font-bold text-slate-900">All Products</h1>
-          <form class="flex gap-2" action="/products" method="get">
-            <input 
-              type="search" 
-              name="q" 
-              value="${query || ''}" 
-              placeholder="Search products..." 
-              class="flex-1 sm:flex-none w-full sm:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            >
-            <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition">
-              Search
-            </button>
-            ${query ? '<a href="/products" class="px-6 py-2 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">Clear</a>' : ''}
-          </form>
-        </div>
-        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
-          ${products.length === 0
-            ? '<p class="text-slate-600 text-center col-span-full py-12">No products found.</p>'
-            : products.map((p: Product) => renderProductCard(p)).join('')}
-        </div>
-        ${query ? `<p class="text-slate-600 mt-8 text-center">${total} result${total !== 1 ? 's' : ''} for "${query}"</p>` : ''}
+      <h1>Products</h1>
+      <form class="search" action="/products" method="get">
+        <input type="search" name="q" value="${query || ''}" placeholder="Search products...">
+        <button type="submit">Search</button>
+        ${query ? `<a href="/products" class="btn btn-sm">Clear</a>` : ''}
+      </form>
+      <div class="products">
+        ${products.length === 0
+          ? '<p class="empty">No products found.</p>'
+          : products.map((p: Product) => renderProductCard(p)).join('')}
       </div>
+      ${query ? `<p style="color:#666;font-size:0.85rem;">${total} result${total !== 1 ? 's' : ''} for "${query}"</p>` : ''}
     `,
     );
     return c.html(html);
@@ -360,14 +231,9 @@ export function createStarterApp(deps: {
         layout(
           'Cart',
           `
-          <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
-            <div class="text-6xl mb-6">🛒</div>
-            <h1 class="text-3xl font-bold text-slate-900 mb-4">Your Cart is Empty</h1>
-            <p class="text-slate-600 mb-8 text-lg">Looks like you haven't added anything yet.</p>
-            <a href="/products" class="inline-block px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg">
-              Continue Shopping →
-            </a>
-          </div>
+          <h1>Your Cart is Empty</h1>
+          <p>Looks like you haven't added anything yet.</p>
+          <a href="/products" class="button-primary">Continue Shopping</a>
         `,
           flash,
         ),
@@ -382,75 +248,46 @@ export function createStarterApp(deps: {
     const html = layout(
       'Cart',
       `
-      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <h1 class="text-3xl font-bold text-slate-900 mb-8">Shopping Cart</h1>
-        <div class="space-y-4 mb-8">
-          ${cart.items
-            .map(
-              (item: any) => `
-            <div class="flex items-center gap-4 p-6 bg-white rounded-xl border border-slate-200 shadow-sm">
-              <div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center text-2xl font-bold text-slate-400 flex-shrink-0">
-                ${item.image?.url ? `<img src="${item.image.url}" alt="${item.name}" class="w-full h-full object-cover rounded-lg">` : item.name.charAt(0)}
-              </div>
-              <div class="flex-1">
-                <h3 class="font-semibold text-slate-900 text-lg">${item.name}</h3>
-                <p class="text-slate-600">${formatPrice(item.price, 'USD')}</p>
-              </div>
-              <form class="flex items-center gap-2" hx-post="/cart/update" hx-target="body">
-                <input type="hidden" name="itemId" value="${item.id}">
-                <input 
-                  type="number" 
-                  name="quantity" 
-                  value="${item.quantity}" 
-                  min="0" 
-                  max="99"
-                  class="w-20 px-3 py-2 border border-slate-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                <button type="submit" class="px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">
-                  Update
-                </button>
-              </form>
-              <div class="text-right w-24">
-                <div class="font-semibold text-slate-900">${formatPrice(item.lineTotal ?? item.price * item.quantity, 'USD')}</div>
-              </div>
-              <form hx-post="/cart/remove" hx-target="body">
-                <input type="hidden" name="itemId" value="${item.id}">
-                <button type="submit" class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition" title="Remove">
-                  ✕
-                </button>
-              </form>
+      <h1>Shopping Cart</h1>
+      <div class="cart-items">
+        ${cart.items
+          .map(
+            (item: any) => `
+          <div class="cart-item">
+            <img src="${item.image?.url || '/placeholder.svg'}" alt="${item.name}">
+            <div class="item-details">
+              <h3>${item.name}</h3>
+              <p>${formatPrice(item.price, 'USD')}</p>
             </div>
-          `,
-            )
-            .join('')}
-        </div>
-        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-8">
-          <div class="flex items-center justify-between py-3 border-b border-slate-200">
-            <span class="text-slate-600">Subtotal</span>
-            <span class="font-semibold text-slate-900 text-lg">${formatPrice(subtotal, 'USD')}</span>
+            <form class="item-quantity" hx-post="/cart/update" hx-target="body">
+              <input type="hidden" name="itemId" value="${item.id}">
+              <input type="number" name="quantity" value="${item.quantity}" min="0" max="99">
+              <button type="submit">Update</button>
+            </form>
+            <div class="item-total">${formatPrice(item.lineTotal ?? item.price * item.quantity, 'USD')}</div>
+            <form hx-post="/cart/remove" hx-target="body">
+              <input type="hidden" name="itemId" value="${item.id}">
+              <button type="submit" class="danger">×</button>
+            </form>
           </div>
-          <div class="flex items-center justify-between py-3">
-            <span class="text-slate-600">Shipping</span>
-            <span class="text-slate-500">Calculated at checkout</span>
-          </div>
-          <div class="flex items-center justify-between py-4 border-t border-slate-200 mt-2">
-            <span class="text-xl font-bold text-slate-900">Total</span>
-            <span class="text-2xl font-bold text-blue-600">${formatPrice(subtotal, 'USD')}</span>
-          </div>
+        `,
+          )
+          .join('')}
+      </div>
+      <div class="cart-totals">
+        <div class="total-line">
+          <span>Subtotal</span>
+          <span>${formatPrice(subtotal, 'USD')}</span>
         </div>
-        <div class="flex flex-col sm:flex-row gap-4">
-          <a href="/products" class="inline-flex items-center justify-center px-6 py-3 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">
-            ← Continue Shopping
-          </a>
-          ${stripe
-            ? `<form action="/checkout" method="post" class="flex-1">
-                 <button type="submit" class="w-full px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg">
-                   Proceed to Checkout →
-                 </button>
-               </form>`
-            : '<p class="text-slate-500">Checkout unavailable - Stripe not configured</p>'
-          }
-        </div>
+      </div>
+      <div class="cart-actions">
+        <a href="/products">← Continue Shopping</a>
+        ${stripe
+          ? `<form action="/checkout" method="post">
+               <button type="submit" class="button-primary">Proceed to Checkout →</button>
+             </form>`
+          : '<p class="notice">Checkout unavailable - Stripe not configured</p>'
+        }
       </div>
     `,
       flash,
@@ -572,9 +409,9 @@ export function createStarterApp(deps: {
 
 
   // Serve admin styles
-  app.get("/admin/styles.css", async (c) => {
-    const css = await fs.readFile("./src/admin-styles.css", "utf8");
-    return c.text(css, { headers: { "Content-Type": "text/css" } });
+  app.get('/admin/styles.css', async (c) => {
+    const css = await fs.readFile('./src/admin-styles.css', 'utf8');
+    return c.text(css, { headers: { 'Content-Type': 'text/css' } });
   });
   return app;
 }
@@ -582,28 +419,22 @@ export function createStarterApp(deps: {
 // Product card component
 function renderProductCard(product: Product): string {
   return `
-    <div class="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-200">
-      <a href="/products/${product.slug}" class="block aspect-square bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-6xl font-bold text-slate-300 group-hover:from-slate-200 group-hover:to-slate-300 transition">
+    <div class="product-card">
+      <a href="/products/${product.slug}">
         ${product.images?.[0]
-          ? `<img src="${product.images[0].url}" alt="${product.name}" class="w-full h-full object-cover">`
-          : product.name.charAt(0)
+          ? `<img src="${product.images[0].url}" alt="${product.name}">`
+          : '<div class="placeholder-image"></div>'
         }
+        <h3>${product.name}</h3>
+        <p class="price">${formatPrice(product.price, 'USD')}</p>
       </a>
-      <div class="p-6">
-        <h3 class="text-lg font-semibold text-slate-900 mb-2">${product.name}</h3>
-        <p class="text-2xl font-bold text-blue-600 mb-4">${formatPrice(product.price, 'USD')}</p>
-        <form hx-post="/cart/add" hx-target="this" hx-swap="outerHTML">
-          <input type="hidden" name="productId" value="${product.id}">
-          <input type="hidden" name="quantity" value="1">
-          <button type="submit" class="w-full py-3 px-6 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition shadow-md hover:shadow-lg">
-            Add to Cart →
-          </button>
-        </form>
-      </div>
+      <form hx-post="/cart/add" hx-target="this" hx-swap="outerHTML">
+        <input type="hidden" name="productId" value="${product.id}">
+        <input type="hidden" name="quantity" value="1">
+        <button type="submit">Add to Cart</button>
+      </form>
     </div>
   `;
 }
 
-});
 
-});
