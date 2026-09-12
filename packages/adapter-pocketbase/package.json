@@ -1,5 +1,5 @@
 {
-  "name": "@tillkit/integration-search",
+  "name": "@tillkit/adapter-pocketbase",
   "version": "0.0.1",
   "type": "module",
   "exports": {

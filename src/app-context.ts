@@ -1,8 +1,12 @@
 import { pocketbaseAdapter, type PocketbaseAdapterConfig } from '@tillkit/adapter-pocketbase';
+import { stripeIntegration, type StripeConfig } from '@tillkit/integration-stripe';
 
 // Environment configuration
 export const POCKETBASE_URL = process.env.POCKETBASE_URL || 'http://localhost:8090';
 export const POCKETBASE_ADMIN_TOKEN = process.env.POCKETBASE_ADMIN_TOKEN;
+export const STRIPE_SECRET_KEY = process.env.STRIPE_SECRET_KEY;
+export const STRIPE_PUBLISHABLE_KEY = process.env.STRIPE_PUBLISHABLE_KEY;
+export const STRIPE_WEBHOOK_SECRET = process.env.STRIPE_WEBHOOK_SECRET;
 export const APP_URL = process.env.APP_URL || 'http://localhost:3000';
 
 // Initialize database
@@ -12,8 +16,17 @@ if (POCKETBASE_ADMIN_TOKEN) {
 }
 export const database = pocketbaseAdapter(dbConfig);
 
-// No Stripe in this build
-export const stripe = null;
+// Initialize Stripe if credentials present
+export const stripe =
+  STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY
+    ? stripeIntegration({
+        provider: 'stripe',
+        secretKey: STRIPE_SECRET_KEY,
+        publishableKey: STRIPE_PUBLISHABLE_KEY,
+        successUrl: `${APP_URL}/checkout/success`,
+        cancelUrl: `${APP_URL}/checkout/cancel`,
+      } satisfies StripeConfig)
+    : null;
 
 // Helper: Get or create session ID
 export function getSessionId(c: any): string {
@@ -22,56 +35,73 @@ export function getSessionId(c: any): string {
   return match ? match[1] : crypto.randomUUID();
 }
 
-// Helper: Set session cookie
-export function setSessionCookie(c: any, sessionId: string): void {
-  c.header('Set-Cookie', `sessionId=${sessionId}; Path=/; Max-Age=2592000; HttpOnly`);
+export function setSessionCookie(c: any, sessionId: string) {
+  c.header(
+    'Set-Cookie',
+    `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`,
+    { append: true },
+  );
 }
 
-// Flash messages
-export function setFlash(c: any, message: string): void {
-  c.header('X-Flash', encodeURIComponent(message));
+/**
+ * Escape a string for interpolation into HTML text.
+ *
+ * `layout()` interpolates `flashMessage` raw, and the messages built from
+ * revalidation carry product names straight out of the database.
+ */
+export function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+/**
+ * A one-shot message carried across a redirect in a cookie.
+ *
+ * `take` clears it, so a message shown once is not shown again on refresh.
+ * Values are URI-encoded because a cookie may not contain `;` or `,`.
+ */
+const FLASH_COOKIE = 'tillkit_flash';
+
+export function setFlash(c: any, message: string) {
+  c.header(
+    'Set-Cookie',
+    `${FLASH_COOKIE}=${encodeURIComponent(message)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=30`,
+    { append: true },
+  );
 }
 
 export function takeFlash(c: any): string | undefined {
-  const flash = c.req.header('X-Flash');
-  if (flash) {
-    c.header('X-Flash', '');
-    return decodeURIComponent(flash);
-  }
-  return undefined;
-}
-
-export function escapeHtml(str: string): string {
-  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  const match = (c.req.header('cookie') || '').match(new RegExp(`${FLASH_COOKIE}=([^;]+)`));
+  if (!match) return undefined;
+  c.header('Set-Cookie', `${FLASH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`, {
+    append: true,
+  });
+  return decodeURIComponent(match[1]);
 }
 
 // HTML Layout
 export const layout = (title: string, content: string, flashMessage?: string) => `<!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} | TillKit</title>
-  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
-<body class="bg-white text-slate-900">
-  <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur border-b border-slate-200">
-    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-      <div class="flex items-center justify-between h-16">
-        <a href="/" class="text-xl font-bold">TillKit</a>
-        <div class="flex items-center gap-6">
-          <a href="/products" class="text-slate-600 hover:text-slate-900">Products</a>
-          <a href="/cart" class="text-slate-600 hover:text-slate-900">
-            Cart (<span id="cart-count">0</span>)
-          </a>
-        </div>
-      </div>
-    </div>
+<body>
+  <nav>
+    <a href="/">TillKit</a>
+    <a href="/products">Products</a>
+    <a href="/cart">Cart (<span id="cart-count"></span>)</a>
+    ${stripe ? '<a href="/admin/orders">Admin</a>' : ''}
   </nav>
   <main>
-    ${flashMessage ? `<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 mt-4"><div class="${flashMessage.includes('Error') ? 'bg-red-50 border-red-200 text-red-800' : 'bg-green-50 border-green-200 text-green-800'} border rounded-lg px-4 py-3">${flashMessage}</div></div>` : ''}
+    ${flashMessage ? `<div class="flash flash-${flashMessage.includes('Error') ? 'error' : 'success'}">${flashMessage}</div>` : ''}
     ${content}
   </main>
   <script>

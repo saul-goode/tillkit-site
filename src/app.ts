@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import { Hono } from 'hono';
 import { createAdminRoutes, createSubscriptionRoutes } from '@tillkit/server';
 import type { Cart, DatabaseAdapter, Product } from '@tillkit/core';
@@ -14,6 +13,7 @@ import type { SubscriptionProvider } from '@tillkit/core';
 import { checkoutRouter } from './routes/checkout.js';
 import { webhooksRouter } from './routes/webhooks.js';
 
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -407,12 +407,6 @@ export function createStarterApp(deps: {
     return c.body(css);
   });
 
-
-  // Serve admin styles
-  app.get('/admin/styles.css', async (c) => {
-    const css = await fs.readFile('./src/admin-styles.css', 'utf8');
-    return c.text(css, { headers: { 'Content-Type': 'text/css' } });
-  });
   return app;
 }
 
@@ -436,5 +430,3 @@ function renderProductCard(product: Product): string {
     </div>
   `;
 }
-
-
