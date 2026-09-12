@@ -8,7 +8,6 @@ import {
   layout,
   takeFlash,
 } from './app-context.js';
-import type { SearchService } from '@tillkit/integration-search';
 import type { SubscriptionProvider } from '@tillkit/core';
 import { checkoutRouter } from './routes/checkout.js';
 import { webhooksRouter } from './routes/webhooks.js';
