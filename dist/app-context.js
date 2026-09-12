@@ -1,5 +1,4 @@
 import { pocketbaseAdapter } from '@tillkit/adapter-pocketbase';
-import { stripeIntegration } from '@tillkit/integration-stripe';
 // Environment configuration
 export const POCKETBASE_URL = process.env.POCKETBASE_URL || 'http://localhost:8090';
 export const POCKETBASE_ADMIN_TOKEN = process.env.POCKETBASE_ADMIN_TOKEN;
@@ -13,16 +12,8 @@ if (POCKETBASE_ADMIN_TOKEN) {
     dbConfig.adminToken = POCKETBASE_ADMIN_TOKEN;
 }
 export const database = pocketbaseAdapter(dbConfig);
-// Initialize Stripe if credentials present
-export const stripe = STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY
-    ? stripeIntegration({
-        provider: 'stripe',
-        secretKey: STRIPE_SECRET_KEY,
-        publishableKey: STRIPE_PUBLISHABLE_KEY,
-        successUrl: `${APP_URL}/checkout/success`,
-        cancelUrl: `${APP_URL}/checkout/cancel`,
-    })
-    : null;
+STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY;
+null;
 // Helper: Get or create session ID
 export function getSessionId(c) {
     const cookie = c.req.header('cookie') || '';
