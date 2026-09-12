@@ -1,7 +1,7 @@
 {
-  "name": "@tillkit/core",
+  "name": "@tillkit/adapter-supabase",
   "version": "0.0.1",
-  "description": "TillKit core - Commerce types, configuration, and business logic",
+  "description": "TillKit Supabase database adapter",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -14,15 +14,16 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
     "dev": "tsup src/index.ts --format esm --dts --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@tillkit/core": "workspace:*",
+    "@supabase/supabase-js": "^2.39.0"
   },
   "devDependencies": {
     "tsup": "^8.0.1",
     "typescript": "^5.3.3",
-    "vitest": "^1.1.0"
-  },
-  "dependencies": {
+    "vitest": "^1.6.1",
     "zod": "^3.22.4"
   }
 }

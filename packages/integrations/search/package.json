@@ -1,7 +1,7 @@
 {
-  "name": "@tillkit/core",
+  "name": "@tillkit/integration-search",
   "version": "0.0.1",
-  "description": "TillKit core - Commerce types, configuration, and business logic",
+  "description": "TillKit search integration with Database FTS and Meilisearch support",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -13,16 +13,13 @@
   },
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts",
-    "dev": "tsup src/index.ts --format esm --dts --watch",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "dev": "tsup src/index.ts --format esm --dts --watch"
+  },
+  "dependencies": {
+    "@tillkit/core": "workspace:*"
   },
   "devDependencies": {
     "tsup": "^8.0.1",
-    "typescript": "^5.3.3",
-    "vitest": "^1.1.0"
-  },
-  "dependencies": {
-    "zod": "^3.22.4"
+    "typescript": "^5.3.3"
   }
 }
