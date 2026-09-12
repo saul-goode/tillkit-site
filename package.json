@@ -15,7 +15,8 @@
     "@tillkit/core": "file:./packages/core",
     "@tillkit/server": "file:./packages/server",
     "@tillkit/adapter-pocketbase": "file:./packages/adapters/pocketbase",
-    "@tillkit/integration-search": "file:./packages/integration-search"
+    "@tillkit/integration-search": "file:./packages/integration-search",
+    "@tillkit/integration-paypal": "file:./packages/integration-paypal"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
