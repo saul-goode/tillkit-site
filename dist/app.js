@@ -487,6 +487,11 @@ export function createStarterApp(deps) {
         c.header('Content-Type', 'text/css');
         return c.body(css);
     });
+    // Serve admin styles
+    app.get("/admin/styles.css", async (c) => {
+        const css = await fs.readFile("./src/admin-styles.css", "utf8");
+        return c.text(css, { headers: { "Content-Type": "text/css" } });
+    });
     return app;
 }
 // Product card component
@@ -512,3 +517,5 @@ function renderProductCard(product) {
     </div>
   `;
 }
+;
+;

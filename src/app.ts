@@ -570,6 +570,12 @@ export function createStarterApp(deps: {
     return c.body(css);
   });
 
+
+  // Serve admin styles
+  app.get("/admin/styles.css", async (c) => {
+    const css = await fs.readFile("./src/admin-styles.css", "utf8");
+    return c.text(css, { headers: { "Content-Type": "text/css" } });
+  });
   return app;
 }
 
@@ -597,3 +603,7 @@ function renderProductCard(product: Product): string {
     </div>
   `;
 }
+
+});
+
+});
