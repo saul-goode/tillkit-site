@@ -90,15 +90,24 @@ export const layout = (title: string, content: string, flashMessage?: string) =>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} | TillKit</title>
+  <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles.css">
   <script src="https://unpkg.com/htmx.org@1.9.10"></script>
 </head>
-<body>
-  <nav>
-    <a href="/">TillKit</a>
-    <a href="/products">Products</a>
-    <a href="/cart">Cart (<span id="cart-count"></span>)</a>
-    ${stripe ? '<a href="/admin/orders">Admin</a>' : ''}
+<body class="bg-white">
+  <nav class="sticky top-0 z-50 bg-white/80 backdrop-blur border-b border-slate-200">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div class="flex items-center justify-between h-16">
+        <a href="/" class="text-xl font-bold">TillKit</a>
+        <div class="flex items-center gap-6">
+          <a href="/products" class="text-slate-600 hover:text-slate-900">Products</a>
+          <a href="/cart" class="text-slate-600 hover:text-slate-900">
+            Cart (<span id="cart-count">0</span>)
+          </a>
+          ${stripe ? '<a href="/admin/orders" class="text-slate-600 hover:text-slate-900">Admin</a>' : ''}
+        </div>
+      </div>
+    </div>
   </nav>
   <main>
     ${flashMessage ? `<div class="flash flash-${flashMessage.includes('Error') ? 'error' : 'success'}">${flashMessage}</div>` : ''}
