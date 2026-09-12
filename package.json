@@ -14,9 +14,11 @@
     "zod": "^3.22.4",
     "@tillkit/core": "file:./packages/core",
     "@tillkit/server": "file:./packages/server",
-    "@tillkit/adapter-pocketbase": "file:./packages/adapters/pocketbase"
+    "@tillkit/adapter-pocketbase": "file:./packages/adapters/pocketbase",
+    "@tillkit/integration-search": "file:./packages/integration-search"
   },
   "devDependencies": {
+    "@types/node": "^22.0.0",
     "typescript": "^5.3.3"
   }
 }
