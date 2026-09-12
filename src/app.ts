@@ -246,18 +246,30 @@ export function createStarterApp(deps: {
     const html = layout(
       'Products',
       `
-      <h1>Products</h1>
-      <form class="search" action="/products" method="get">
-        <input type="search" name="q" value="${query || ''}" placeholder="Search products...">
-        <button type="submit">Search</button>
-        ${query ? `<a href="/products" class="btn btn-sm">Clear</a>` : ''}
-      </form>
-      <div class="products">
-        ${products.length === 0
-          ? '<p class="empty">No products found.</p>'
-          : products.map((p: Product) => renderProductCard(p)).join('')}
+      <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-8">
+          <h1 class="text-3xl font-bold text-slate-900">All Products</h1>
+          <form class="flex gap-2" action="/products" method="get">
+            <input 
+              type="search" 
+              name="q" 
+              value="${query || ''}" 
+              placeholder="Search products..." 
+              class="flex-1 sm:flex-none w-full sm:w-64 px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            >
+            <button type="submit" class="px-6 py-2 bg-blue-600 text-white font-semibold rounded-lg hover:bg-blue-700 transition">
+              Search
+            </button>
+            ${query ? '<a href="/products" class="px-6 py-2 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">Clear</a>' : ''}
+          </form>
+        </div>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-8">
+          ${products.length === 0
+            ? '<p class="text-slate-600 text-center col-span-full py-12">No products found.</p>'
+            : products.map((p: Product) => renderProductCard(p)).join('')}
+        </div>
+        ${query ? `<p class="text-slate-600 mt-8 text-center">${total} result${total !== 1 ? 's' : ''} for "${query}"</p>` : ''}
       </div>
-      ${query ? `<p style="color:#666;font-size:0.85rem;">${total} result${total !== 1 ? 's' : ''} for "${query}"</p>` : ''}
     `,
     );
     return c.html(html);
@@ -349,9 +361,14 @@ export function createStarterApp(deps: {
         layout(
           'Cart',
           `
-          <h1>Your Cart is Empty</h1>
-          <p>Looks like you haven't added anything yet.</p>
-          <a href="/products" class="button-primary">Continue Shopping</a>
+          <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
+            <div class="text-6xl mb-6">🛒</div>
+            <h1 class="text-3xl font-bold text-slate-900 mb-4">Your Cart is Empty</h1>
+            <p class="text-slate-600 mb-8 text-lg">Looks like you haven't added anything yet.</p>
+            <a href="/products" class="inline-block px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg">
+              Continue Shopping →
+            </a>
+          </div>
         `,
           flash,
         ),
@@ -366,46 +383,75 @@ export function createStarterApp(deps: {
     const html = layout(
       'Cart',
       `
-      <h1>Shopping Cart</h1>
-      <div class="cart-items">
-        ${cart.items
-          .map(
-            (item: any) => `
-          <div class="cart-item">
-            <img src="${item.image?.url || '/placeholder.svg'}" alt="${item.name}">
-            <div class="item-details">
-              <h3>${item.name}</h3>
-              <p>${formatPrice(item.price, 'USD')}</p>
+      <div class="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        <h1 class="text-3xl font-bold text-slate-900 mb-8">Shopping Cart</h1>
+        <div class="space-y-4 mb-8">
+          ${cart.items
+            .map(
+              (item: any) => `
+            <div class="flex items-center gap-4 p-6 bg-white rounded-xl border border-slate-200 shadow-sm">
+              <div class="w-20 h-20 bg-gradient-to-br from-slate-100 to-slate-200 rounded-lg flex items-center justify-center text-2xl font-bold text-slate-400 flex-shrink-0">
+                ${item.image?.url ? `<img src="${item.image.url}" alt="${item.name}" class="w-full h-full object-cover rounded-lg">` : item.name.charAt(0)}
+              </div>
+              <div class="flex-1">
+                <h3 class="font-semibold text-slate-900 text-lg">${item.name}</h3>
+                <p class="text-slate-600">${formatPrice(item.price, 'USD')}</p>
+              </div>
+              <form class="flex items-center gap-2" hx-post="/cart/update" hx-target="body">
+                <input type="hidden" name="itemId" value="${item.id}">
+                <input 
+                  type="number" 
+                  name="quantity" 
+                  value="${item.quantity}" 
+                  min="0" 
+                  max="99"
+                  class="w-20 px-3 py-2 border border-slate-300 rounded-lg text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                <button type="submit" class="px-4 py-2 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">
+                  Update
+                </button>
+              </form>
+              <div class="text-right w-24">
+                <div class="font-semibold text-slate-900">${formatPrice(item.lineTotal ?? item.price * item.quantity, 'USD')}</div>
+              </div>
+              <form hx-post="/cart/remove" hx-target="body">
+                <input type="hidden" name="itemId" value="${item.id}">
+                <button type="submit" class="p-2 text-red-500 hover:text-red-700 hover:bg-red-50 rounded-lg transition" title="Remove">
+                  ✕
+                </button>
+              </form>
             </div>
-            <form class="item-quantity" hx-post="/cart/update" hx-target="body">
-              <input type="hidden" name="itemId" value="${item.id}">
-              <input type="number" name="quantity" value="${item.quantity}" min="0" max="99">
-              <button type="submit">Update</button>
-            </form>
-            <div class="item-total">${formatPrice(item.lineTotal ?? item.price * item.quantity, 'USD')}</div>
-            <form hx-post="/cart/remove" hx-target="body">
-              <input type="hidden" name="itemId" value="${item.id}">
-              <button type="submit" class="danger">×</button>
-            </form>
-          </div>
-        `,
-          )
-          .join('')}
-      </div>
-      <div class="cart-totals">
-        <div class="total-line">
-          <span>Subtotal</span>
-          <span>${formatPrice(subtotal, 'USD')}</span>
+          `,
+            )
+            .join('')}
         </div>
-      </div>
-      <div class="cart-actions">
-        <a href="/products">← Continue Shopping</a>
-        ${stripe
-          ? `<form action="/checkout" method="post">
-               <button type="submit" class="button-primary">Proceed to Checkout →</button>
-             </form>`
-          : '<p class="notice">Checkout unavailable - Stripe not configured</p>'
-        }
+        <div class="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-8">
+          <div class="flex items-center justify-between py-3 border-b border-slate-200">
+            <span class="text-slate-600">Subtotal</span>
+            <span class="font-semibold text-slate-900 text-lg">${formatPrice(subtotal, 'USD')}</span>
+          </div>
+          <div class="flex items-center justify-between py-3">
+            <span class="text-slate-600">Shipping</span>
+            <span class="text-slate-500">Calculated at checkout</span>
+          </div>
+          <div class="flex items-center justify-between py-4 border-t border-slate-200 mt-2">
+            <span class="text-xl font-bold text-slate-900">Total</span>
+            <span class="text-2xl font-bold text-blue-600">${formatPrice(subtotal, 'USD')}</span>
+          </div>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-4">
+          <a href="/products" class="inline-flex items-center justify-center px-6 py-3 bg-slate-200 text-slate-700 font-semibold rounded-lg hover:bg-slate-300 transition">
+            ← Continue Shopping
+          </a>
+          ${stripe
+            ? `<form action="/checkout" method="post" class="flex-1">
+                 <button type="submit" class="w-full px-8 py-4 bg-blue-600 text-white font-semibold rounded-xl hover:bg-blue-700 transition shadow-lg">
+                   Proceed to Checkout →
+                 </button>
+               </form>`
+            : '<p class="text-slate-500">Checkout unavailable - Stripe not configured</p>'
+          }
+        </div>
       </div>
     `,
       flash,
@@ -531,20 +577,24 @@ export function createStarterApp(deps: {
 // Product card component
 function renderProductCard(product: Product): string {
   return `
-    <div class="product-card">
-      <a href="/products/${product.slug}">
+    <div class="group bg-white rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 overflow-hidden border border-slate-200">
+      <a href="/products/${product.slug}" class="block aspect-square bg-gradient-to-br from-slate-100 to-slate-200 flex items-center justify-center text-6xl font-bold text-slate-300 group-hover:from-slate-200 group-hover:to-slate-300 transition">
         ${product.images?.[0]
-          ? `<img src="${product.images[0].url}" alt="${product.name}">`
-          : '<div class="placeholder-image"></div>'
+          ? `<img src="${product.images[0].url}" alt="${product.name}" class="w-full h-full object-cover">`
+          : product.name.charAt(0)
         }
-        <h3>${product.name}</h3>
-        <p class="price">${formatPrice(product.price, 'USD')}</p>
       </a>
-      <form hx-post="/cart/add" hx-target="this" hx-swap="outerHTML">
-        <input type="hidden" name="productId" value="${product.id}">
-        <input type="hidden" name="quantity" value="1">
-        <button type="submit">Add to Cart</button>
-      </form>
+      <div class="p-6">
+        <h3 class="text-lg font-semibold text-slate-900 mb-2">${product.name}</h3>
+        <p class="text-2xl font-bold text-blue-600 mb-4">${formatPrice(product.price, 'USD')}</p>
+        <form hx-post="/cart/add" hx-target="this" hx-swap="outerHTML">
+          <input type="hidden" name="productId" value="${product.id}">
+          <input type="hidden" name="quantity" value="1">
+          <button type="submit" class="w-full py-3 px-6 bg-slate-900 text-white font-semibold rounded-xl hover:bg-slate-800 transition shadow-md hover:shadow-lg">
+            Add to Cart →
+          </button>
+        </form>
+      </div>
     </div>
   `;
 }
