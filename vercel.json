@@ -1,5 +1,19 @@
 {
   "version": 2,
-  "buildCommand": "echo 'Build already done locally'",
-  "outputDirectory": "."
+  "builds": [
+    {
+      "src": "dist/index.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/styles.css",
+      "dest": "/styles.css"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "dist/index.js"
+    }
+  ]
 }

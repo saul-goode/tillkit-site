@@ -1,10 +1,10 @@
-import fs from 'node:fs/promises';
 import { Hono } from 'hono';
 import { createAdminRoutes, createSubscriptionRoutes } from '@tillkit/server';
 import { formatPrice } from '@tillkit/core';
 import { getSessionId, setSessionCookie, layout, takeFlash, } from './app-context.js';
 import { checkoutRouter } from './routes/checkout.js';
 import { webhooksRouter } from './routes/webhooks.js';
+import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 const __filename = fileURLToPath(import.meta.url);
@@ -322,11 +322,6 @@ export function createStarterApp(deps) {
         const css = await fs.readFile(cssPath, 'utf8');
         c.header('Content-Type', 'text/css');
         return c.body(css);
-    });
-    // Serve admin styles
-    app.get('/admin/styles.css', async (c) => {
-        const css = await fs.readFile('./src/admin-styles.css', 'utf8');
-        return c.text(css, { headers: { 'Content-Type': 'text/css' } });
     });
     return app;
 }
