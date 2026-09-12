@@ -16,7 +16,6 @@
       "@tillkit/server": ["./packages/server/dist/index.d.ts"],
       "@tillkit/adapter-pocketbase": ["./packages/adapter-pocketbase/dist/index.d.ts"],
       "@tillkit/integration-stripe": ["./packages/integration-stripe/dist/index.d.ts"],
-      "@tillkit/integration-search": ["./packages/integration-search/dist/index.d.ts"],
       "@tillkit/integration-paypal": ["./packages/integration-paypal/dist/index.d.ts"]
     }
   },
