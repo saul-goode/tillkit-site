@@ -4,15 +4,2065 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// dist/app.js
-import { Hono as Hono11 } from "hono";
+// node_modules/hono/dist/compose.js
+var compose = (middleware, onError, onNotFound) => {
+  return (context, next) => {
+    let index = -1;
+    return dispatch(0);
+    async function dispatch(i) {
+      if (i <= index) {
+        throw new Error("next() called multiple times");
+      }
+      index = i;
+      let res;
+      let isError = false;
+      let handler2;
+      if (middleware[i]) {
+        handler2 = middleware[i][0][0];
+        context.req.routeIndex = i;
+      } else {
+        handler2 = i === middleware.length && next || void 0;
+      }
+      if (handler2) {
+        try {
+          res = await handler2(context, () => dispatch(i + 1));
+        } catch (err) {
+          if (err instanceof Error && onError) {
+            context.error = err;
+            res = await onError(err, context);
+            isError = true;
+          } else {
+            throw err;
+          }
+        }
+      } else {
+        if (context.finalized === false && onNotFound) {
+          res = await onNotFound(context);
+        }
+      }
+      if (res && (context.finalized === false || isError)) {
+        context.res = res;
+      }
+      return context;
+    }
+  };
+};
 
-// packages/server/dist/index.js
-import { Hono as Hono8 } from "hono";
-import { Hono } from "hono";
-import { Hono as Hono2 } from "hono";
-import { Hono as Hono3 } from "hono";
-import { Hono as Hono4 } from "hono";
+// node_modules/hono/dist/request/constants.js
+var GET_MATCH_RESULT = /* @__PURE__ */ Symbol();
+
+// node_modules/hono/dist/utils/buffer.js
+var bufferToFormData = (arrayBuffer, contentType) => {
+  const response = new Response(arrayBuffer, {
+    headers: {
+      // Normalize the media type (case-insensitive) while keeping parameters like the boundary
+      "Content-Type": contentType.replace(/^[^;]+/, (mediaType) => mediaType.toLowerCase())
+    }
+  });
+  return response.formData();
+};
+
+// node_modules/hono/dist/utils/body.js
+var MAX_NESTING_DEPTH = 32;
+var MAX_NESTED_OBJECTS = 1e4;
+var isRawRequest = (request) => "headers" in request;
+var parseBody = async (request, options = /* @__PURE__ */ Object.create(null)) => {
+  const { all = false, dot = false } = options;
+  const headers = isRawRequest(request) ? request.headers : request.raw.headers;
+  const contentType = headers.get("Content-Type");
+  const mediaType = contentType?.split(";")[0].trim().toLowerCase();
+  if (mediaType === "multipart/form-data" || mediaType === "application/x-www-form-urlencoded") {
+    return parseFormData(request, { all, dot });
+  }
+  return {};
+};
+async function parseFormData(request, options) {
+  if (!isRawRequest(request) && request.bodyCache.formData) {
+    return convertFormDataToBodyData(
+      await request.bodyCache.formData,
+      options
+    );
+  }
+  const headers = isRawRequest(request) ? request.headers : request.raw.headers;
+  const arrayBuffer = await request.arrayBuffer();
+  const formDataPromise = bufferToFormData(arrayBuffer, headers.get("Content-Type") || "");
+  if (!isRawRequest(request)) {
+    request.bodyCache.formData = formDataPromise;
+  }
+  const formData = await formDataPromise;
+  if (formData) {
+    return convertFormDataToBodyData(formData, options);
+  }
+  return {};
+}
+function convertFormDataToBodyData(formData, options) {
+  const form = /* @__PURE__ */ Object.create(null);
+  const nestingState = { count: 0 };
+  formData.forEach((value, key) => {
+    const shouldParseAllValues = options.all || key.endsWith("[]");
+    if (!shouldParseAllValues) {
+      form[key] = value;
+    } else {
+      handleParsingAllValues(form, key, value);
+    }
+  });
+  if (options.dot) {
+    Object.entries(form).forEach(([key, value]) => {
+      const shouldParseDotValues = key.includes(".");
+      if (shouldParseDotValues) {
+        handleParsingNestedValues(form, key, value, nestingState);
+        delete form[key];
+      }
+    });
+  }
+  return form;
+}
+var handleParsingAllValues = (form, key, value) => {
+  if (form[key] !== void 0) {
+    if (Array.isArray(form[key])) {
+      ;
+      form[key].push(value);
+    } else {
+      form[key] = [form[key], value];
+    }
+  } else {
+    if (!key.endsWith("[]")) {
+      form[key] = value;
+    } else {
+      form[key] = [value];
+    }
+  }
+};
+var handleParsingNestedValues = (form, key, value, state) => {
+  if (/(?:^|\.)__proto__\./.test(key)) {
+    return;
+  }
+  let nestedForm = form;
+  const keys = key.split(".", MAX_NESTING_DEPTH + 2);
+  if (keys.length > MAX_NESTING_DEPTH + 1) {
+    throwNestingLimitExceeded();
+  }
+  keys.forEach((key2, index) => {
+    if (index === keys.length - 1) {
+      nestedForm[key2] = value;
+    } else {
+      if (!nestedForm[key2] || typeof nestedForm[key2] !== "object" || Array.isArray(nestedForm[key2]) || nestedForm[key2] instanceof File) {
+        if (state.count++ >= MAX_NESTED_OBJECTS) {
+          throwNestingLimitExceeded();
+        }
+        nestedForm[key2] = /* @__PURE__ */ Object.create(null);
+      }
+      nestedForm = nestedForm[key2];
+    }
+  });
+};
+var throwNestingLimitExceeded = () => {
+  throw new Error("Nesting limit exceeded");
+};
+
+// node_modules/hono/dist/utils/url.js
+var splitPath = (path2) => {
+  const paths = path2.split("/");
+  if (paths[0] === "") {
+    paths.shift();
+  }
+  return paths;
+};
+var splitRoutingPath = (routePath) => {
+  const { groups, path: path2 } = extractGroupsFromPath(routePath);
+  const paths = splitPath(path2);
+  return replaceGroupMarks(paths, groups);
+};
+var extractGroupsFromPath = (path2) => {
+  const groups = [];
+  path2 = path2.replace(/\{[^}]+\}/g, (match2, index) => {
+    const mark = `@${index}`;
+    groups.push([mark, match2]);
+    return mark;
+  });
+  return { groups, path: path2 };
+};
+var replaceGroupMarks = (paths, groups) => {
+  for (let i = groups.length - 1; i >= 0; i--) {
+    const [mark] = groups[i];
+    for (let j = paths.length - 1; j >= 0; j--) {
+      if (paths[j].includes(mark)) {
+        paths[j] = paths[j].replace(mark, groups[i][1]);
+        break;
+      }
+    }
+  }
+  return paths;
+};
+var patternCache = {};
+var getPattern = (label, next) => {
+  if (label === "*") {
+    return "*";
+  }
+  const match2 = label.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
+  if (match2) {
+    const cacheKey = `${label}#${next}`;
+    if (!patternCache[cacheKey]) {
+      if (match2[2]) {
+        patternCache[cacheKey] = next && next[0] !== ":" && next[0] !== "*" ? [cacheKey, match2[1], new RegExp(`^${match2[2]}(?=/${next})`)] : [label, match2[1], new RegExp(`^${match2[2]}$`)];
+      } else {
+        patternCache[cacheKey] = [label, match2[1], true];
+      }
+    }
+    return patternCache[cacheKey];
+  }
+  return null;
+};
+var tryDecode = (str, decoder) => {
+  try {
+    return decoder(str);
+  } catch {
+    return str.replace(/(?:%[0-9A-Fa-f]{2})+/g, (match2) => {
+      try {
+        return decoder(match2);
+      } catch {
+        return match2;
+      }
+    });
+  }
+};
+var tryDecodeURI = (str) => tryDecode(str, decodeURI);
+var getPath = (request) => {
+  const url = request.url;
+  const start = url.indexOf("/", url.indexOf(":") + 4);
+  let i = start;
+  for (; i < url.length; i++) {
+    const charCode = url.charCodeAt(i);
+    if (charCode === 37) {
+      const queryIndex = url.indexOf("?", i);
+      const hashIndex = url.indexOf("#", i);
+      const end = queryIndex === -1 ? hashIndex === -1 ? void 0 : hashIndex : hashIndex === -1 ? queryIndex : Math.min(queryIndex, hashIndex);
+      const path2 = url.slice(start, end);
+      return tryDecodeURI(path2.includes("%25") ? path2.replace(/%25/g, "%2525") : path2);
+    } else if (charCode === 63 || charCode === 35) {
+      break;
+    }
+  }
+  return url.slice(start, i);
+};
+var getPathNoStrict = (request) => {
+  const result = getPath(request);
+  return result.length > 1 && result.at(-1) === "/" ? result.slice(0, -1) : result;
+};
+var mergePath = (base, sub, ...rest) => {
+  if (rest.length) {
+    sub = mergePath(sub, ...rest);
+  }
+  return `${base?.[0] === "/" ? "" : "/"}${base}${sub === "/" ? "" : `${base?.at(-1) === "/" ? "" : "/"}${sub?.[0] === "/" ? sub.slice(1) : sub}`}`;
+};
+var checkOptionalParameter = (path2) => {
+  if (path2.charCodeAt(path2.length - 1) !== 63 || !path2.includes(":")) {
+    return null;
+  }
+  const segments = path2.split("/");
+  const results = [];
+  let basePath = "";
+  segments.forEach((segment) => {
+    if (segment !== "" && !/\:/.test(segment)) {
+      basePath += "/" + segment;
+    } else if (/\:/.test(segment)) {
+      if (segment.charCodeAt(segment.length - 1) === 63) {
+        if (results.length === 0 && basePath === "") {
+          results.push("/");
+        } else {
+          results.push(basePath);
+        }
+        const optionalSegment = segment.slice(0, -1);
+        basePath += "/" + optionalSegment;
+        results.push(basePath);
+      } else {
+        basePath += "/" + segment;
+      }
+    }
+  });
+  return results.filter((v, i, a) => a.indexOf(v) === i);
+};
+var tryDecodeURIComponent = (str) => str.indexOf("%") !== -1 ? tryDecode(str, decodeURIComponent_) : str;
+var _decodeURI = (value) => {
+  if (value.indexOf("+") !== -1) {
+    value = value.replace(/\+/g, " ");
+  }
+  return tryDecodeURIComponent(value);
+};
+var _getQueryParam = (url, key, multiple) => {
+  const hashIndex = url.indexOf("#", 8);
+  if (hashIndex !== -1) {
+    url = url.slice(0, hashIndex);
+  }
+  let encoded;
+  if (!multiple && key && key.indexOf("%") === -1 && key.indexOf("+") === -1) {
+    let keyIndex2 = url.indexOf("?", 8);
+    if (keyIndex2 === -1) {
+      return void 0;
+    }
+    if (!url.startsWith(key, keyIndex2 + 1)) {
+      keyIndex2 = url.indexOf(`&${key}`, keyIndex2 + 1);
+    }
+    while (keyIndex2 !== -1) {
+      const trailingKeyCode = url.charCodeAt(keyIndex2 + key.length + 1);
+      if (trailingKeyCode === 61) {
+        const valueIndex = keyIndex2 + key.length + 2;
+        const endIndex = url.indexOf("&", valueIndex);
+        return _decodeURI(url.slice(valueIndex, endIndex === -1 ? void 0 : endIndex));
+      } else if (trailingKeyCode == 38 || isNaN(trailingKeyCode)) {
+        return "";
+      }
+      keyIndex2 = url.indexOf(`&${key}`, keyIndex2 + 1);
+    }
+    encoded = /[%+]/.test(url);
+    if (!encoded) {
+      return void 0;
+    }
+  }
+  const results = /* @__PURE__ */ Object.create(null);
+  encoded ??= /[%+]/.test(url);
+  let keyIndex = url.indexOf("?", 8);
+  while (keyIndex !== -1) {
+    const nextKeyIndex = url.indexOf("&", keyIndex + 1);
+    let valueIndex = url.indexOf("=", keyIndex);
+    if (valueIndex > nextKeyIndex && nextKeyIndex !== -1) {
+      valueIndex = -1;
+    }
+    let name = url.slice(
+      keyIndex + 1,
+      valueIndex === -1 ? nextKeyIndex === -1 ? void 0 : nextKeyIndex : valueIndex
+    );
+    if (encoded) {
+      name = _decodeURI(name);
+    }
+    keyIndex = nextKeyIndex;
+    if (name === "") {
+      continue;
+    }
+    let value;
+    if (valueIndex === -1) {
+      value = "";
+    } else {
+      value = url.slice(valueIndex + 1, nextKeyIndex === -1 ? void 0 : nextKeyIndex);
+      if (encoded) {
+        value = _decodeURI(value);
+      }
+    }
+    if (multiple) {
+      if (!(results[name] && Array.isArray(results[name]))) {
+        results[name] = [];
+      }
+      ;
+      results[name].push(value);
+    } else {
+      results[name] ??= value;
+    }
+  }
+  return key ? results[key] : results;
+};
+var getQueryParam = _getQueryParam;
+var getQueryParams = (url, key) => {
+  return _getQueryParam(url, key, true);
+};
+var decodeURIComponent_ = decodeURIComponent;
+
+// node_modules/hono/dist/request.js
+var HonoRequest = class {
+  /**
+   * `.raw` can get the raw Request object.
+   *
+   * @see {@link https://hono.dev/docs/api/request#raw}
+   *
+   * @example
+   * ```ts
+   * // For Cloudflare Workers
+   * app.post('/', async (c) => {
+   *   const metadata = c.req.raw.cf?.hostMetadata?
+   *   ...
+   * })
+   * ```
+   */
+  raw;
+  #validatedData;
+  // Short name of validatedData
+  #matchResult;
+  routeIndex = 0;
+  /**
+   * `.path` can get the pathname of the request.
+   *
+   * @see {@link https://hono.dev/docs/api/request#path}
+   *
+   * @example
+   * ```ts
+   * app.get('/about/me', (c) => {
+   *   const pathname = c.req.path // `/about/me`
+   * })
+   * ```
+   */
+  path;
+  bodyCache = {};
+  constructor(request, path2 = "/", matchResult = [[]]) {
+    this.raw = request;
+    this.path = path2;
+    this.#matchResult = matchResult;
+  }
+  param(key) {
+    return key ? this.#getDecodedParam(key) : this.#getAllDecodedParams();
+  }
+  #getDecodedParam(key) {
+    const paramKey = this.#matchResult[0][this.routeIndex]?.[1][key];
+    const param = this.#getParamValue(paramKey);
+    return param && tryDecodeURIComponent(param);
+  }
+  #getAllDecodedParams() {
+    const decoded = {};
+    const keys = Object.keys(this.#matchResult[0][this.routeIndex]?.[1] ?? {});
+    for (const key of keys) {
+      const value = this.#getParamValue(this.#matchResult[0][this.routeIndex][1][key]);
+      if (value !== void 0) {
+        decoded[key] = tryDecodeURIComponent(value);
+      }
+    }
+    return decoded;
+  }
+  #getParamValue(paramKey) {
+    return this.#matchResult[1] ? this.#matchResult[1][paramKey] : paramKey;
+  }
+  query(key) {
+    return getQueryParam(this.url, key);
+  }
+  queries(key) {
+    return getQueryParams(this.url, key);
+  }
+  header(name) {
+    if (name) {
+      return this.raw.headers.get(name) ?? void 0;
+    }
+    const headerData = /* @__PURE__ */ Object.create(null);
+    this.raw.headers.forEach((value, key) => {
+      headerData[key] = value;
+    });
+    return headerData;
+  }
+  async parseBody(options) {
+    return parseBody(this, options);
+  }
+  #cachedBody = (key) => {
+    const { bodyCache, raw: raw2 } = this;
+    const cachedBody = bodyCache[key];
+    if (cachedBody) {
+      return cachedBody;
+    }
+    for (const anyCachedKey in bodyCache) {
+      return bodyCache[anyCachedKey].then((body) => {
+        if (anyCachedKey === "json") {
+          body = JSON.stringify(body);
+        }
+        return new Response(body)[key]();
+      });
+    }
+    return bodyCache[key] = raw2[key]();
+  };
+  /**
+   * `.json()` can parse Request body of type `application/json`
+   *
+   * @see {@link https://hono.dev/docs/api/request#json}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.json()
+   * })
+   * ```
+   */
+  json() {
+    return this.#cachedBody("text").then((text2) => JSON.parse(text2));
+  }
+  /**
+   * `.text()` can parse Request body of type `text/plain`
+   *
+   * @see {@link https://hono.dev/docs/api/request#text}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.text()
+   * })
+   * ```
+   */
+  text() {
+    return this.#cachedBody("text");
+  }
+  /**
+   * `.arrayBuffer()` parse Request body as an `ArrayBuffer`
+   *
+   * @see {@link https://hono.dev/docs/api/request#arraybuffer}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.arrayBuffer()
+   * })
+   * ```
+   */
+  arrayBuffer() {
+    return this.#cachedBody("arrayBuffer");
+  }
+  /**
+   * `.bytes()` parses the request body as a `Uint8Array`.
+   *
+   * @see {@link https://hono.dev/docs/api/request#bytes}
+   *
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.bytes()
+   * })
+   * ```
+   */
+  bytes() {
+    return this.#cachedBody("arrayBuffer").then((buffer) => new Uint8Array(buffer));
+  }
+  /**
+   * Parses the request body as a `Blob`.
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.blob();
+   * });
+   * ```
+   * @see https://hono.dev/docs/api/request#blob
+   */
+  blob() {
+    return this.#cachedBody("blob");
+  }
+  /**
+   * Parses the request body as `FormData`.
+   * @example
+   * ```ts
+   * app.post('/entry', async (c) => {
+   *   const body = await c.req.formData();
+   * });
+   * ```
+   * @see https://hono.dev/docs/api/request#formdata
+   */
+  formData() {
+    return this.#cachedBody("formData");
+  }
+  /**
+   * Adds validated data to the request.
+   *
+   * @param target - The target of the validation.
+   * @param data - The validated data to add.
+   */
+  addValidatedData(target, data) {
+    ;
+    (this.#validatedData ??= {})[target] = data;
+  }
+  valid(target) {
+    return this.#validatedData?.[target];
+  }
+  /**
+   * `.url()` can get the request url strings.
+   *
+   * @see {@link https://hono.dev/docs/api/request#url}
+   *
+   * @example
+   * ```ts
+   * app.get('/about/me', (c) => {
+   *   const url = c.req.url // `http://localhost:8787/about/me`
+   *   ...
+   * })
+   * ```
+   */
+  get url() {
+    return this.raw.url;
+  }
+  /**
+   * `.method()` can get the method name of the request.
+   *
+   * @see {@link https://hono.dev/docs/api/request#method}
+   *
+   * @example
+   * ```ts
+   * app.get('/about/me', (c) => {
+   *   const method = c.req.method // `GET`
+   * })
+   * ```
+   */
+  get method() {
+    return this.raw.method;
+  }
+  get [GET_MATCH_RESULT]() {
+    return this.#matchResult;
+  }
+  /**
+   * `.matchedRoutes()` can return a matched route in the handler
+   *
+   * @deprecated
+   *
+   * Use matchedRoutes helper defined in "hono/route" instead.
+   *
+   * @see {@link https://hono.dev/docs/api/request#matchedroutes}
+   *
+   * @example
+   * ```ts
+   * app.use('*', async function logger(c, next) {
+   *   await next()
+   *   c.req.matchedRoutes.forEach(({ handler, method, path }, i) => {
+   *     const name = handler.name || (handler.length < 2 ? '[handler]' : '[middleware]')
+   *     console.log(
+   *       method,
+   *       ' ',
+   *       path,
+   *       ' '.repeat(Math.max(10 - path.length, 0)),
+   *       name,
+   *       i === c.req.routeIndex ? '<- respond from here' : ''
+   *     )
+   *   })
+   * })
+   * ```
+   */
+  get matchedRoutes() {
+    return this.#matchResult[0].map(([[, route]]) => route);
+  }
+  /**
+   * `routePath()` can retrieve the path registered within the handler
+   *
+   * @deprecated
+   *
+   * Use routePath helper defined in "hono/route" instead.
+   *
+   * @see {@link https://hono.dev/docs/api/request#routepath}
+   *
+   * @example
+   * ```ts
+   * app.get('/posts/:id', (c) => {
+   *   return c.json({ path: c.req.routePath })
+   * })
+   * ```
+   */
+  get routePath() {
+    return this.#matchResult[0].map(([[, route]]) => route)[this.routeIndex].path;
+  }
+};
+
+// node_modules/hono/dist/utils/html.js
+var HtmlEscapedCallbackPhase = {
+  Stringify: 1,
+  BeforeStream: 2,
+  Stream: 3
+};
+var raw = (value, callbacks) => {
+  const escapedString = new String(value);
+  escapedString.isEscaped = true;
+  escapedString.callbacks = callbacks;
+  return escapedString;
+};
+var resolveCallback = async (str, phase, preserveCallbacks, context, buffer) => {
+  if (typeof str === "object" && !(str instanceof String)) {
+    if (!(str instanceof Promise)) {
+      str = str.toString();
+    }
+    if (str instanceof Promise) {
+      str = await str;
+    }
+  }
+  const callbacks = str.callbacks;
+  if (!callbacks?.length) {
+    return Promise.resolve(str);
+  }
+  if (buffer) {
+    buffer[0] += str;
+  } else {
+    buffer = [str];
+  }
+  const resStr = Promise.all(callbacks.map((c) => c({ phase, buffer, context }))).then(
+    (res) => Promise.all(
+      res.filter(Boolean).map((str2) => resolveCallback(str2, phase, false, context, buffer))
+    ).then(() => buffer[0])
+  );
+  if (preserveCallbacks) {
+    return raw(await resStr, callbacks);
+  } else {
+    return resStr;
+  }
+};
+
+// node_modules/hono/dist/context.js
+var TEXT_PLAIN = "text/plain; charset=UTF-8";
+var setDefaultContentType = (contentType, headers) => {
+  return {
+    "Content-Type": contentType,
+    ...headers
+  };
+};
+var createResponseInstance = (body, init) => new Response(body, init);
+var Context = class {
+  #rawRequest;
+  #req;
+  /**
+   * `.env` can get bindings (environment variables, secrets, KV namespaces, D1 database, R2 bucket etc.) in Cloudflare Workers.
+   *
+   * @see {@link https://hono.dev/docs/api/context#env}
+   *
+   * @example
+   * ```ts
+   * // Environment object for Cloudflare Workers
+   * app.get('*', async c => {
+   *   const counter = c.env.COUNTER
+   * })
+   * ```
+   */
+  env = {};
+  #var;
+  finalized = false;
+  /**
+   * `.error` can get the error object from the middleware if the Handler throws an error.
+   *
+   * @see {@link https://hono.dev/docs/api/context#error}
+   *
+   * @example
+   * ```ts
+   * app.use('*', async (c, next) => {
+   *   await next()
+   *   if (c.error) {
+   *     // do something...
+   *   }
+   * })
+   * ```
+   */
+  error;
+  #status;
+  #executionCtx;
+  #res;
+  #layout;
+  #renderer;
+  #notFoundHandler;
+  #preparedHeaders;
+  #matchResult;
+  #path;
+  /**
+   * Creates an instance of the Context class.
+   *
+   * @param req - The Request object.
+   * @param options - Optional configuration options for the context.
+   */
+  constructor(req, options) {
+    this.#rawRequest = req;
+    if (options) {
+      this.#executionCtx = options.executionCtx;
+      this.env = options.env;
+      this.#notFoundHandler = options.notFoundHandler;
+      this.#path = options.path;
+      this.#matchResult = options.matchResult;
+    }
+  }
+  /**
+   * `.req` is the instance of {@link HonoRequest}.
+   */
+  get req() {
+    this.#req ??= new HonoRequest(this.#rawRequest, this.#path, this.#matchResult);
+    return this.#req;
+  }
+  /**
+   * @see {@link https://hono.dev/docs/api/context#event}
+   * The FetchEvent associated with the current request.
+   *
+   * @throws Will throw an error if the context does not have a FetchEvent.
+   */
+  get event() {
+    if (this.#executionCtx && "respondWith" in this.#executionCtx) {
+      return this.#executionCtx;
+    } else {
+      throw Error("This context has no FetchEvent");
+    }
+  }
+  /**
+   * @see {@link https://hono.dev/docs/api/context#executionctx}
+   * The ExecutionContext associated with the current request.
+   *
+   * @throws Will throw an error if the context does not have an ExecutionContext.
+   */
+  get executionCtx() {
+    if (this.#executionCtx) {
+      return this.#executionCtx;
+    } else {
+      throw Error("This context has no ExecutionContext");
+    }
+  }
+  /**
+   * @see {@link https://hono.dev/docs/api/context#res}
+   * The Response object for the current request.
+   */
+  get res() {
+    return this.#res ||= createResponseInstance(null, {
+      headers: this.#preparedHeaders ??= new Headers()
+    });
+  }
+  /**
+   * Sets the Response object for the current request.
+   *
+   * @param _res - The Response object to set.
+   */
+  set res(_res) {
+    if (this.#res && _res) {
+      _res = createResponseInstance(_res.body, _res);
+      for (const [k, v] of this.#res.headers.entries()) {
+        if (k === "content-type") {
+          continue;
+        }
+        if (k === "set-cookie") {
+          const cookies = this.#res.headers.getSetCookie();
+          _res.headers.delete("set-cookie");
+          for (const cookie of cookies) {
+            _res.headers.append("set-cookie", cookie);
+          }
+        } else {
+          _res.headers.set(k, v);
+        }
+      }
+    }
+    this.#res = _res;
+    this.finalized = true;
+  }
+  /**
+   * `.render()` can create a response within a layout.
+   *
+   * @see {@link https://hono.dev/docs/api/context#render-setrenderer}
+   *
+   * @example
+   * ```ts
+   * app.get('/', (c) => {
+   *   return c.render('Hello!')
+   * })
+   * ```
+   */
+  render = (...args) => {
+    this.#renderer ??= (content) => this.html(content);
+    return this.#renderer(...args);
+  };
+  /**
+   * Sets the layout for the response.
+   *
+   * @param layout - The layout to set.
+   * @returns The layout function.
+   */
+  setLayout = (layout2) => this.#layout = layout2;
+  /**
+   * Gets the current layout for the response.
+   *
+   * @returns The current layout function.
+   */
+  getLayout = () => this.#layout;
+  /**
+   * `.setRenderer()` can set the layout in the custom middleware.
+   *
+   * @see {@link https://hono.dev/docs/api/context#render-setrenderer}
+   *
+   * @example
+   * ```tsx
+   * app.use('*', async (c, next) => {
+   *   c.setRenderer((content) => {
+   *     return c.html(
+   *       <html>
+   *         <body>
+   *           <p>{content}</p>
+   *         </body>
+   *       </html>
+   *     )
+   *   })
+   *   await next()
+   * })
+   * ```
+   */
+  setRenderer = (renderer) => {
+    this.#renderer = renderer;
+  };
+  /**
+   * `.header()` can set headers.
+   *
+   * @see {@link https://hono.dev/docs/api/context#header}
+   *
+   * @example
+   * ```ts
+   * app.get('/welcome', (c) => {
+   *   // Set headers
+   *   c.header('X-Message', 'Hello!')
+   *   c.header('Content-Type', 'text/plain')
+   *
+   *   // Append multiple headers using the append option (e.g. Vary)
+   *   c.header('Vary', 'Accept-Encoding', { append: true })
+   *   c.header('Vary', 'User-Agent', { append: true })
+   *
+   *   return c.body('Thank you for coming')
+   * })
+   * ```
+   */
+  header = (name, value, options) => {
+    if (this.finalized) {
+      this.#res = createResponseInstance(this.#res.body, this.#res);
+    }
+    const headers = this.#res ? this.#res.headers : this.#preparedHeaders ??= new Headers();
+    if (value === void 0) {
+      headers.delete(name);
+    } else if (options?.append) {
+      headers.append(name, value);
+    } else {
+      headers.set(name, value);
+    }
+  };
+  status = (status) => {
+    this.#status = status;
+  };
+  /**
+   * `.set()` can set the value specified by the key.
+   *
+   * @see {@link https://hono.dev/docs/api/context#set-get}
+   *
+   * @example
+   * ```ts
+   * app.use('*', async (c, next) => {
+   *   c.set('message', 'Hono is hot!!')
+   *   await next()
+   * })
+   * ```
+   */
+  set = (key, value) => {
+    this.#var ??= /* @__PURE__ */ new Map();
+    this.#var.set(key, value);
+  };
+  /**
+   * `.get()` can use the value specified by the key.
+   *
+   * @see {@link https://hono.dev/docs/api/context#set-get}
+   *
+   * @example
+   * ```ts
+   * app.get('/', (c) => {
+   *   const message = c.get('message')
+   *   return c.text(`The message is "${message}"`)
+   * })
+   * ```
+   */
+  get = (key) => {
+    return this.#var ? this.#var.get(key) : void 0;
+  };
+  /**
+   * `.var` can access the value of a variable.
+   *
+   * @see {@link https://hono.dev/docs/api/context#var}
+   *
+   * @example
+   * ```ts
+   * const result = c.var.client.oneMethod()
+   * ```
+   */
+  // c.var.propName is a read-only
+  get var() {
+    if (!this.#var) {
+      return {};
+    }
+    return Object.fromEntries(this.#var);
+  }
+  #newResponse(data, arg, headers) {
+    let responseHeaders = this.#res ? new Headers(this.#res.headers) : this.#preparedHeaders;
+    if (typeof arg === "object" && arg.headers) {
+      responseHeaders ??= new Headers();
+      for (const [key, value] of new Headers(arg.headers)) {
+        if (key === "set-cookie") {
+          responseHeaders.append(key, value);
+        } else {
+          responseHeaders.set(key, value);
+        }
+      }
+    }
+    if (headers) {
+      if (!responseHeaders) {
+        let count = 0;
+        for (const k in headers) {
+          if (++count > 1 || typeof headers[k] !== "string") {
+            responseHeaders = new Headers();
+            break;
+          }
+        }
+      }
+      if (responseHeaders) {
+        for (const k in headers) {
+          const v = headers[k];
+          if (typeof v === "string") {
+            responseHeaders.set(k, v);
+          } else {
+            responseHeaders.delete(k);
+            for (const v2 of v) {
+              responseHeaders.append(k, v2);
+            }
+          }
+        }
+      }
+    }
+    const status = typeof arg === "number" ? arg : arg?.status ?? this.#status;
+    return createResponseInstance(data, {
+      status,
+      headers: responseHeaders ?? headers
+    });
+  }
+  newResponse = (...args) => this.#newResponse(...args);
+  /**
+   * `.body()` can return the HTTP response.
+   * You can set headers with `.header()` and set HTTP status code with `.status`.
+   * This can also be set in `.text()`, `.json()` and so on.
+   *
+   * @see {@link https://hono.dev/docs/api/context#body}
+   *
+   * @example
+   * ```ts
+   * app.get('/welcome', (c) => {
+   *   // Set headers
+   *   c.header('X-Message', 'Hello!')
+   *   c.header('Content-Type', 'text/plain')
+   *   // Set HTTP status code
+   *   c.status(201)
+   *
+   *   // Return the response body
+   *   return c.body('Thank you for coming')
+   * })
+   * ```
+   */
+  body = (data, arg, headers) => this.#newResponse(data, arg, headers);
+  /**
+   * `.text()` can render text as `Content-Type:text/plain`.
+   *
+   * @see {@link https://hono.dev/docs/api/context#text}
+   *
+   * @example
+   * ```ts
+   * app.get('/say', (c) => {
+   *   return c.text('Hello!')
+   * })
+   * ```
+   */
+  text = (text2, arg, headers) => {
+    return !this.#preparedHeaders && !this.#status && !arg && !headers && !this.finalized ? new Response(text2) : this.#newResponse(
+      text2,
+      arg,
+      setDefaultContentType(TEXT_PLAIN, headers)
+    );
+  };
+  /**
+   * `.json()` can render JSON as `Content-Type:application/json`.
+   *
+   * @see {@link https://hono.dev/docs/api/context#json}
+   *
+   * @example
+   * ```ts
+   * app.get('/api', (c) => {
+   *   return c.json({ message: 'Hello!' })
+   * })
+   * ```
+   */
+  json = (object, arg, headers) => {
+    return this.#newResponse(
+      JSON.stringify(object),
+      arg,
+      setDefaultContentType("application/json", headers)
+    );
+  };
+  html = (html, arg, headers) => {
+    const res = (html2) => this.#newResponse(html2, arg, setDefaultContentType("text/html; charset=UTF-8", headers));
+    return typeof html === "object" ? resolveCallback(html, HtmlEscapedCallbackPhase.Stringify, false, {}).then(res) : res(html);
+  };
+  /**
+   * `.redirect()` can Redirect, default status code is 302.
+   *
+   * @see {@link https://hono.dev/docs/api/context#redirect}
+   *
+   * @example
+   * ```ts
+   * app.get('/redirect', (c) => {
+   *   return c.redirect('/')
+   * })
+   * app.get('/redirect-permanently', (c) => {
+   *   return c.redirect('/', 301)
+   * })
+   * ```
+   */
+  redirect = (location, status) => {
+    const locationString = String(location);
+    this.header(
+      "Location",
+      // Multibyes should be encoded
+      // eslint-disable-next-line no-control-regex
+      !/[^\x00-\xFF]/.test(locationString) ? locationString : encodeURI(locationString)
+    );
+    return this.newResponse(null, status ?? 302);
+  };
+  /**
+   * `.notFound()` can return the Not Found Response.
+   *
+   * @see {@link https://hono.dev/docs/api/context#notfound}
+   *
+   * @example
+   * ```ts
+   * app.get('/notfound', (c) => {
+   *   return c.notFound()
+   * })
+   * ```
+   */
+  notFound = () => {
+    this.#notFoundHandler ??= () => createResponseInstance();
+    return this.#notFoundHandler(this);
+  };
+};
+
+// node_modules/hono/dist/router.js
+var METHOD_NAME_ALL = "ALL";
+var METHOD_NAME_ALL_LOWERCASE = "all";
+var METHODS = ["get", "post", "put", "delete", "options", "patch", "query"];
+var MESSAGE_MATCHER_IS_ALREADY_BUILT = "Can not add a route since the matcher is already built.";
+var UnsupportedPathError = class extends Error {
+};
+
+// node_modules/hono/dist/utils/constants.js
+var COMPOSED_HANDLER = "__COMPOSED_HANDLER";
+
+// node_modules/hono/dist/hono-base.js
+var notFoundHandler = (c) => {
+  return c.text("404 Not Found", 404);
+};
+var errorHandler = (err, c) => {
+  if ("getResponse" in err) {
+    const res = err.getResponse();
+    return c.newResponse(res.body, res);
+  }
+  console.error(err);
+  return c.text("Internal Server Error", 500);
+};
+var Hono = class _Hono {
+  get;
+  post;
+  put;
+  delete;
+  options;
+  patch;
+  query;
+  all;
+  on;
+  use;
+  /*
+    This class is like an abstract class and does not have a router.
+    To use it, inherit the class and implement router in the constructor.
+  */
+  router;
+  getPath;
+  // Cannot use `#` because it requires visibility at JavaScript runtime.
+  _basePath = "/";
+  #path = "/";
+  routes = [];
+  constructor(options = {}) {
+    const allMethods = [...METHODS, METHOD_NAME_ALL_LOWERCASE];
+    allMethods.forEach((method) => {
+      this[method] = (args1, ...args) => {
+        const methodName = method.toUpperCase();
+        if (typeof args1 === "string") {
+          this.#path = args1;
+        } else {
+          this.#addRoute(methodName, this.#path, args1);
+        }
+        args.forEach((handler2) => {
+          this.#addRoute(methodName, this.#path, handler2);
+        });
+        return this;
+      };
+    });
+    this.on = (method, path2, ...handlers) => {
+      for (const p of [path2].flat()) {
+        this.#path = p;
+        for (const m of [method].flat()) {
+          const methodName = m.toUpperCase();
+          for (const handler2 of handlers) {
+            this.#addRoute(methodName, this.#path, handler2);
+          }
+        }
+      }
+      return this;
+    };
+    this.use = (arg1, ...handlers) => {
+      if (typeof arg1 === "string") {
+        this.#path = arg1;
+      } else {
+        this.#path = "*";
+        handlers.unshift(arg1);
+      }
+      handlers.forEach((handler2) => {
+        this.#addRoute(METHOD_NAME_ALL, this.#path, handler2);
+      });
+      return this;
+    };
+    const { strict, ...optionsWithoutStrict } = options;
+    Object.assign(this, optionsWithoutStrict);
+    this.getPath = strict ?? true ? options.getPath ?? getPath : getPathNoStrict;
+  }
+  #clone() {
+    const clone = new _Hono({
+      router: this.router,
+      getPath: this.getPath
+    });
+    clone.errorHandler = this.errorHandler;
+    clone.#notFoundHandler = this.#notFoundHandler;
+    clone.routes = this.routes;
+    return clone;
+  }
+  #notFoundHandler = notFoundHandler;
+  // Cannot use `#` because it requires visibility at JavaScript runtime.
+  errorHandler = errorHandler;
+  /**
+   * `.route()` allows grouping other Hono instance in routes.
+   *
+   * @see {@link https://hono.dev/docs/api/routing#grouping}
+   *
+   * @param {string} path - base Path
+   * @param {Hono} app - other Hono instance
+   * @returns {Hono} routed Hono instance
+   *
+   * @example
+   * ```ts
+   * const app = new Hono()
+   * const app2 = new Hono()
+   *
+   * app2.get("/user", (c) => c.text("user"))
+   * app.route("/api", app2) // GET /api/user
+   * ```
+   */
+  route(path2, app2) {
+    const subApp = this.basePath(path2);
+    app2.routes.map((r) => {
+      let handler2;
+      if (app2.errorHandler === errorHandler) {
+        handler2 = r.handler;
+      } else {
+        handler2 = async (c, next) => (await compose([], app2.errorHandler)(c, () => r.handler(c, next))).res;
+        handler2[COMPOSED_HANDLER] = r.handler;
+      }
+      subApp.#addRoute(r.method, r.path, handler2, r.basePath);
+    });
+    return this;
+  }
+  /**
+   * `.basePath()` allows base paths to be specified.
+   *
+   * @see {@link https://hono.dev/docs/api/routing#base-path}
+   *
+   * @param {string} path - base Path
+   * @returns {Hono} changed Hono instance
+   *
+   * @example
+   * ```ts
+   * const api = new Hono().basePath('/api')
+   * ```
+   */
+  basePath(path2) {
+    const subApp = this.#clone();
+    subApp._basePath = mergePath(this._basePath, path2);
+    return subApp;
+  }
+  /**
+   * `.onError()` handles an error and returns a customized Response.
+   *
+   * @see {@link https://hono.dev/docs/api/hono#error-handling}
+   *
+   * @param {ErrorHandler} handler - request Handler for error
+   * @returns {Hono} changed Hono instance
+   *
+   * @example
+   * ```ts
+   * app.onError((err, c) => {
+   *   console.error(`${err}`)
+   *   return c.text('Custom Error Message', 500)
+   * })
+   * ```
+   */
+  onError = (handler2) => {
+    this.errorHandler = handler2;
+    return this;
+  };
+  /**
+   * `.notFound()` allows you to customize a Not Found Response.
+   *
+   * @see {@link https://hono.dev/docs/api/hono#not-found}
+   *
+   * @param {NotFoundHandler} handler - request handler for not-found
+   * @returns {Hono} changed Hono instance
+   *
+   * @example
+   * ```ts
+   * app.notFound((c) => {
+   *   return c.text('Custom 404 Message', 404)
+   * })
+   * ```
+   */
+  notFound = (handler2) => {
+    this.#notFoundHandler = handler2;
+    return this;
+  };
+  /**
+   * `.mount()` allows you to mount applications built with other frameworks into your Hono application.
+   *
+   * @see {@link https://hono.dev/docs/api/hono#mount}
+   *
+   * @param {string} path - base Path
+   * @param {Function} applicationHandler - other Request Handler
+   * @param {MountOptions} [options] - options of `.mount()`
+   * @returns {Hono} mounted Hono instance
+   *
+   * @example
+   * ```ts
+   * import { Router as IttyRouter } from 'itty-router'
+   * import { Hono } from 'hono'
+   * // Create itty-router application
+   * const ittyRouter = IttyRouter()
+   * // GET /itty-router/hello
+   * ittyRouter.get('/hello', () => new Response('Hello from itty-router'))
+   *
+   * const app = new Hono()
+   * app.mount('/itty-router', ittyRouter.handle)
+   * ```
+   *
+   * @example
+   * ```ts
+   * const app = new Hono()
+   * // Send the request to another application without modification.
+   * app.mount('/app', anotherApp, {
+   *   replaceRequest: (req) => req,
+   * })
+   * ```
+   */
+  mount(path2, applicationHandler, options) {
+    let replaceRequest;
+    let optionHandler;
+    if (options) {
+      if (typeof options === "function") {
+        optionHandler = options;
+      } else {
+        optionHandler = options.optionHandler;
+        if (options.replaceRequest === false) {
+          replaceRequest = (request) => request;
+        } else {
+          replaceRequest = options.replaceRequest;
+        }
+      }
+    }
+    const getOptions = optionHandler ? (c) => {
+      const options2 = optionHandler(c);
+      return Array.isArray(options2) ? options2 : [options2];
+    } : (c) => {
+      let executionContext = void 0;
+      try {
+        executionContext = c.executionCtx;
+      } catch {
+      }
+      return [c.env, executionContext];
+    };
+    replaceRequest ||= (() => {
+      const mergedPath = mergePath(this._basePath, path2);
+      const pathPrefixLength = mergedPath === "/" ? 0 : mergedPath.length;
+      return (request) => {
+        const url = new URL(request.url);
+        url.pathname = this.getPath(request).slice(pathPrefixLength) || "/";
+        return new Request(url, request);
+      };
+    })();
+    const handler2 = async (c, next) => {
+      const res = await applicationHandler(replaceRequest(c.req.raw), ...getOptions(c));
+      if (res) {
+        return res;
+      }
+      await next();
+    };
+    this.#addRoute(METHOD_NAME_ALL, mergePath(path2, "*"), handler2);
+    return this;
+  }
+  #addRoute(method, path2, handler2, baseRoutePath) {
+    path2 = mergePath(this._basePath, path2);
+    const r = {
+      basePath: baseRoutePath !== void 0 ? mergePath(this._basePath, baseRoutePath) : this._basePath,
+      path: path2,
+      method,
+      handler: handler2
+    };
+    this.router.add(method, path2, [handler2, r]);
+    this.routes.push(r);
+  }
+  #handleError(err, c) {
+    if (err instanceof Error) {
+      return this.errorHandler(err, c);
+    }
+    throw err;
+  }
+  #dispatch(request, executionCtx, env, method) {
+    if (method === "HEAD") {
+      return (async () => new Response(null, await this.#dispatch(request, executionCtx, env, "GET")))();
+    }
+    const path2 = this.getPath(request, { env });
+    const matchResult = this.router.match(method, path2);
+    const c = new Context(request, {
+      path: path2,
+      matchResult,
+      env,
+      executionCtx,
+      notFoundHandler: this.#notFoundHandler
+    });
+    if (matchResult[0].length === 1) {
+      let res;
+      try {
+        res = matchResult[0][0][0][0](c, async () => {
+          c.res = await this.#notFoundHandler(c);
+        });
+      } catch (err) {
+        return this.#handleError(err, c);
+      }
+      return res instanceof Promise ? res.then(
+        (resolved) => resolved || (c.finalized ? c.res : this.#notFoundHandler(c))
+      ).catch((err) => this.#handleError(err, c)) : res ?? this.#notFoundHandler(c);
+    }
+    const composed = compose(matchResult[0], this.errorHandler, this.#notFoundHandler);
+    return (async () => {
+      try {
+        const context = await composed(c);
+        if (!context.finalized) {
+          throw new Error(
+            "Context is not finalized. Did you forget to return a Response object or `await next()`?"
+          );
+        }
+        return context.res;
+      } catch (err) {
+        return this.#handleError(err, c);
+      }
+    })();
+  }
+  /**
+   * `.fetch()` will be entry point of your app.
+   *
+   * @see {@link https://hono.dev/docs/api/hono#fetch}
+   *
+   * @param {Request} request - request Object of request
+   * @param {Env} env - env Object
+   * @param {ExecutionContext} executionCtx - context of execution
+   * @returns {Response | Promise<Response>} response of request
+   *
+   */
+  fetch = (request, ...rest) => {
+    return this.#dispatch(request, rest[1], rest[0], request.method);
+  };
+  /**
+   * `.request()` is a useful method for testing.
+   * You can pass a URL or pathname to send a GET request.
+   * app will return a Response object.
+   * ```ts
+   * test('GET /hello is ok', async () => {
+   *   const res = await app.request('/hello')
+   *   expect(res.status).toBe(200)
+   * })
+   * ```
+   * @see https://hono.dev/docs/api/hono#request
+   */
+  request = (input, requestInit, Env, executionCtx) => {
+    if (input instanceof Request) {
+      return this.fetch(requestInit ? new Request(input, requestInit) : input, Env, executionCtx);
+    }
+    input = input.toString();
+    return this.fetch(
+      new Request(
+        /^https?:\/\//.test(input) ? input : `http://localhost${mergePath("/", input)}`,
+        requestInit
+      ),
+      Env,
+      executionCtx
+    );
+  };
+  /**
+   * `.fire()` automatically adds a global fetch event listener.
+   * This can be useful for environments that adhere to the Service Worker API, such as non-ES module Cloudflare Workers.
+   * @deprecated
+   * Use `fire` from `hono/service-worker` instead.
+   * ```ts
+   * import { Hono } from 'hono'
+   * import { fire } from 'hono/service-worker'
+   *
+   * const app = new Hono()
+   * // ...
+   * fire(app)
+   * ```
+   * @see https://hono.dev/docs/api/hono#fire
+   * @see https://developer.mozilla.org/en-US/docs/Web/API/Service_Worker_API
+   * @see https://developers.cloudflare.com/workers/reference/migrate-to-module-workers/
+   */
+  fire = () => {
+    addEventListener("fetch", (event) => {
+      event.respondWith(this.#dispatch(event.request, event, void 0, event.request.method));
+    });
+  };
+};
+
+// node_modules/hono/dist/router/utils.js
+var createNullObject = () => /* @__PURE__ */ Object.create(null);
+
+// node_modules/hono/dist/router/reg-exp-router/matcher.js
+var emptyParam = [];
+function match(method, path2) {
+  const matchers = this.buildAllMatchers();
+  const match2 = ((method2, path22) => {
+    const matcher = matchers[method2] || matchers[METHOD_NAME_ALL];
+    const staticMatch = matcher[2][path22];
+    if (staticMatch) {
+      return staticMatch;
+    }
+    const match3 = path22.match(matcher[0]);
+    if (!match3) {
+      return [[], emptyParam];
+    }
+    const index = match3.indexOf("", 1);
+    return [matcher[1][index], match3];
+  });
+  this.match = match2;
+  return match2(method, path2);
+}
+
+// node_modules/hono/dist/router/reg-exp-router/node.js
+var LABEL_REG_EXP_STR = "[^/]+";
+var ONLY_WILDCARD_REG_EXP_STR = ".*";
+var TAIL_WILDCARD_REG_EXP_STR = "(?:|/.*)";
+var PATH_ERROR = /* @__PURE__ */ Symbol();
+var regExpMetaChars = new Set(".\\+*[^]$()");
+function compareKey(a, b) {
+  if (a.length === 1) {
+    return b.length === 1 ? a < b ? -1 : 1 : -1;
+  }
+  if (b.length === 1) {
+    return 1;
+  }
+  if (a === ONLY_WILDCARD_REG_EXP_STR || a === TAIL_WILDCARD_REG_EXP_STR) {
+    return b === TAIL_WILDCARD_REG_EXP_STR ? -1 : 1;
+  } else if (b === ONLY_WILDCARD_REG_EXP_STR || b === TAIL_WILDCARD_REG_EXP_STR) {
+    return -1;
+  }
+  if (a === LABEL_REG_EXP_STR) {
+    return 1;
+  } else if (b === LABEL_REG_EXP_STR) {
+    return -1;
+  }
+  return a.length === b.length ? a < b ? -1 : 1 : b.length - a.length;
+}
+var Node = class _Node {
+  // handler index of a dynamic path, or -1 for a static path terminal
+  #index;
+  #varIndex;
+  #children = createNullObject();
+  insert(tokens, index, paramMap, context, isStatic) {
+    let node = this;
+    for (let i = 0, len = tokens.length; i < len; i++) {
+      const token = tokens[i];
+      const pattern = token.length === 1 ? token === "*" ? i === len - 1 ? ["", "", ONLY_WILDCARD_REG_EXP_STR] : ["", "", LABEL_REG_EXP_STR] : null : token === "/*" ? ["", "", TAIL_WILDCARD_REG_EXP_STR] : token.match(/^\:([^\{\}]+)(?:\{(.+)\})?$/);
+      let nextNode;
+      if (pattern) {
+        const name = pattern[1];
+        let regexpStr = pattern[2] || LABEL_REG_EXP_STR;
+        if (name && pattern[2]) {
+          if (regexpStr === ".*") {
+            throw PATH_ERROR;
+          }
+          regexpStr = regexpStr.replace(/^\((?!\?:)(?=[^)]+\)$)/, "(?:");
+          if (/\((?!\?:)/.test(regexpStr)) {
+            throw PATH_ERROR;
+          }
+          if (regexpStr.length === 1 && regExpMetaChars.has(regexpStr)) {
+            throw PATH_ERROR;
+          }
+        }
+        nextNode = node.#children[regexpStr];
+        if (!nextNode) {
+          if (regexpStr !== ONLY_WILDCARD_REG_EXP_STR && regexpStr !== TAIL_WILDCARD_REG_EXP_STR) {
+            for (const k in node.#children) {
+              if (
+                // a single-char pattern coexists with single-char literals as a literal does
+                (regexpStr.length > 1 || k.length > 1) && k !== ONLY_WILDCARD_REG_EXP_STR && k !== TAIL_WILDCARD_REG_EXP_STR
+              ) {
+                throw PATH_ERROR;
+              }
+            }
+          }
+          nextNode = node.#children[regexpStr] = new _Node();
+        }
+        if (name !== "") {
+          nextNode.#varIndex ??= context.varIndex++;
+          paramMap.push([name, nextNode.#varIndex]);
+        }
+      } else {
+        nextNode = node.#children[token];
+        if (!nextNode) {
+          for (const k in node.#children) {
+            if (k.length > 1 && k !== ONLY_WILDCARD_REG_EXP_STR && k !== TAIL_WILDCARD_REG_EXP_STR) {
+              throw PATH_ERROR;
+            }
+          }
+          nextNode = node.#children[token] = new _Node();
+        }
+      }
+      node = nextNode;
+    }
+    if (node.#index !== void 0) {
+      throw PATH_ERROR;
+    }
+    node.#index = isStatic ? -1 : index;
+  }
+  buildRegExpStr() {
+    const childKeys = Object.keys(this.#children).sort(compareKey);
+    const strList = childKeys.map((k) => {
+      const c = this.#children[k];
+      const childStr = c.buildRegExpStr();
+      return childStr === "" ? "" : (typeof c.#varIndex === "number" ? `(${k})@${c.#varIndex}` : regExpMetaChars.has(k) ? `\\${k}` : k) + childStr;
+    }).filter(Boolean);
+    if (typeof this.#index === "number" && this.#index !== -1) {
+      strList.unshift(`#${this.#index}`);
+    }
+    if (strList.length === 0) {
+      return "";
+    }
+    if (strList.length === 1) {
+      return strList[0];
+    }
+    return "(?:" + strList.join("|") + ")";
+  }
+};
+
+// node_modules/hono/dist/router/reg-exp-router/trie.js
+var Trie = class {
+  #context = { varIndex: 0 };
+  #root = new Node();
+  #index = 0;
+  // dynamic path -> [handler index, param assoc]; static paths are not registered
+  paths = createNullObject();
+  insert(path2, isStatic) {
+    if (isStatic) {
+      this.#root.insert(path2.split(""), 0, [], this.#context, true);
+      return;
+    }
+    const paramAssoc = [];
+    const groups = [];
+    let markedPath = path2;
+    for (let i = 0; ; ) {
+      let replaced = false;
+      markedPath = markedPath.replace(/\{[^}]+\}/g, (m) => {
+        const mark = `@\\${i}`;
+        groups[i] = [mark, m];
+        i++;
+        replaced = true;
+        return mark;
+      });
+      if (!replaced) {
+        break;
+      }
+    }
+    const tokens = markedPath.match(/(?::[^\/]+)|(?:\/\*$)|./g) || [];
+    for (let i = groups.length - 1; i >= 0; i--) {
+      const [mark] = groups[i];
+      for (let j = tokens.length - 1; j >= 0; j--) {
+        if (tokens[j].indexOf(mark) !== -1) {
+          tokens[j] = tokens[j].replace(mark, groups[i][1]);
+          break;
+        }
+      }
+    }
+    this.#root.insert(tokens, this.#index, paramAssoc, this.#context, false);
+    this.paths[path2] = [this.#index++, paramAssoc];
+  }
+  buildRegExp() {
+    let regexp = this.#root.buildRegExpStr();
+    if (regexp === "") {
+      return [/^$/, [], []];
+    }
+    let captureIndex = 0;
+    const indexReplacementMap = [];
+    const paramReplacementMap = [];
+    regexp = regexp.replace(/#(\d+)|@(\d+)|\.\*\$/g, (_, handlerIndex, paramIndex) => {
+      if (handlerIndex !== void 0) {
+        indexReplacementMap[++captureIndex] = Number(handlerIndex);
+        return "$()";
+      }
+      if (paramIndex !== void 0) {
+        paramReplacementMap[Number(paramIndex)] = ++captureIndex;
+        return "";
+      }
+      return "";
+    });
+    return [new RegExp(`^${regexp}`), indexReplacementMap, paramReplacementMap];
+  }
+};
+
+// node_modules/hono/dist/router/reg-exp-router/router.js
+var wildcardRegExpCache = createNullObject();
+function buildWildcardRegExp(path2) {
+  return wildcardRegExpCache[path2] ??= new RegExp(
+    `^${path2.replace(
+      /\/:[^/{}]+(?:\{\[\^\/]\+})?(?=[/{]|$)|\/?\*$|([.\\+*[^\]$()?{}|])/g,
+      (match2, metaChar) => metaChar ? `\\${metaChar}` : match2 === "/*" ? TAIL_WILDCARD_REG_EXP_STR : match2 === "*" ? ONLY_WILDCARD_REG_EXP_STR : `/:${LABEL_REG_EXP_STR}`
+    )}$`
+  );
+}
+function findMiddleware(middleware, path2) {
+  for (const k of Object.keys(middleware).sort((a, b) => b.length - a.length)) {
+    if (buildWildcardRegExp(k).test(path2)) {
+      return [...middleware[k]];
+    }
+  }
+  return void 0;
+}
+var RegExpRouter = class {
+  name = "RegExpRouter";
+  #middleware;
+  #routes;
+  #tries;
+  constructor() {
+    this.#middleware = { [METHOD_NAME_ALL]: createNullObject() };
+    this.#routes = { [METHOD_NAME_ALL]: createNullObject() };
+    this.#tries = { [METHOD_NAME_ALL]: new Trie() };
+  }
+  #insertPath(method, path2) {
+    try {
+      this.#tries[method].insert(path2, !/\*|\/:/.test(path2));
+    } catch (e) {
+      throw e === PATH_ERROR ? new UnsupportedPathError(path2) : e;
+    }
+  }
+  add(method, path2, handler2) {
+    const middleware = this.#middleware;
+    const routes = this.#routes;
+    if (!middleware) {
+      throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
+    }
+    if (!middleware[method]) {
+      this.#tries[method] = new Trie();
+      for (const handlerMap of [middleware, routes]) {
+        handlerMap[method] = createNullObject();
+        for (const p in handlerMap[METHOD_NAME_ALL]) {
+          handlerMap[method][p] = [...handlerMap[METHOD_NAME_ALL][p]];
+          this.#insertPath(method, p);
+        }
+      }
+    }
+    if (path2 === "/*") {
+      path2 = "*";
+    }
+    const methods = method === METHOD_NAME_ALL ? Object.keys(middleware) : [method];
+    if (/\*$/.test(path2)) {
+      const re = buildWildcardRegExp(path2);
+      for (const m of methods) {
+        if (!middleware[m][path2]) {
+          this.#insertPath(m, path2);
+          middleware[m][path2] = findMiddleware(middleware[m], path2) || findMiddleware(middleware[METHOD_NAME_ALL], path2) || [];
+        }
+      }
+      for (const handlerMap of [middleware, routes]) {
+        for (const m of methods) {
+          for (const p in handlerMap[m]) {
+            re.test(p) && handlerMap[m][p].push([handler2, path2]);
+          }
+        }
+      }
+      return;
+    }
+    const paths = checkOptionalParameter(path2) || [path2];
+    for (const path22 of paths) {
+      for (const m of methods) {
+        if (!routes[m][path22]) {
+          this.#insertPath(m, path22);
+          routes[m][path22] = findMiddleware(middleware[m], path22) || findMiddleware(middleware[METHOD_NAME_ALL], path22) || [];
+        }
+        routes[m][path22].push([handler2, path22]);
+      }
+    }
+  }
+  match = match;
+  buildAllMatchers() {
+    const matchers = createNullObject();
+    for (const method of Object.keys(this.#routes)) {
+      matchers[method] = this.#buildMatcher(method);
+    }
+    this.#middleware = this.#routes = this.#tries = void 0;
+    wildcardRegExpCache = createNullObject();
+    return matchers;
+  }
+  #buildMatcher(method) {
+    const middleware = this.#middleware[method];
+    const routes = this.#routes[method];
+    const trie = this.#tries[method];
+    const staticMap = createNullObject();
+    const handlerData = [];
+    const [regexp, indexReplacementMap, paramReplacementMap] = trie.buildRegExp();
+    for (const r of [middleware, routes]) {
+      for (const path2 in r) {
+        const handlers = r[path2];
+        const pathData = trie.paths[path2];
+        if (!pathData) {
+          staticMap[path2] = [handlers.map(([h]) => [h, createNullObject()]), emptyParam];
+          continue;
+        }
+        handlerData[pathData[0]] = handlers.map(([h, handlerPath]) => [
+          h,
+          trie.paths[handlerPath][1].reduceRight((map, [key], i) => {
+            map[key] = paramReplacementMap[pathData[1][i][1]];
+            return map;
+          }, createNullObject())
+        ]);
+      }
+    }
+    return [regexp, indexReplacementMap.map((i) => handlerData[i]), staticMap];
+  }
+};
+
+// node_modules/hono/dist/router/smart-router/router.js
+var SmartRouter = class {
+  name = "SmartRouter";
+  #routers = [];
+  #routes = [];
+  constructor(init) {
+    this.#routers = init.routers;
+  }
+  add(method, path2, handler2) {
+    if (!this.#routes) {
+      throw new Error(MESSAGE_MATCHER_IS_ALREADY_BUILT);
+    }
+    this.#routes.push([method, path2, handler2]);
+  }
+  match(method, path2) {
+    if (!this.#routes) {
+      throw new Error("Fatal error");
+    }
+    const routers = this.#routers;
+    const routes = this.#routes;
+    const len = routers.length;
+    let i = 0;
+    let res;
+    for (; i < len; i++) {
+      const router = routers[i];
+      try {
+        for (let i2 = 0, len2 = routes.length; i2 < len2; i2++) {
+          router.add(...routes[i2]);
+        }
+        res = router.match(method, path2);
+      } catch (e) {
+        if (e instanceof UnsupportedPathError) {
+          continue;
+        }
+        throw e;
+      }
+      this.match = router.match.bind(router);
+      this.#routers = [router];
+      this.#routes = void 0;
+      break;
+    }
+    if (i === len) {
+      throw new Error("Fatal error");
+    }
+    this.name = `SmartRouter + ${this.activeRouter.name}`;
+    return res;
+  }
+  get activeRouter() {
+    if (this.#routes || this.#routers.length !== 1) {
+      throw new Error("No active router has been determined yet.");
+    }
+    return this.#routers[0];
+  }
+};
+
+// node_modules/hono/dist/router/trie-router/node.js
+var emptyParams = createNullObject();
+var order = 0;
+var Node2 = class _Node2 {
+  #methods = [];
+  #children = createNullObject();
+  #patterns = [];
+  #pattern;
+  #params = emptyParams;
+  insert(method, path2, handler2) {
+    let curNode = this;
+    const parts = splitRoutingPath(path2);
+    const possibleKeys = /* @__PURE__ */ new Set();
+    let i = 0;
+    for (const p of parts) {
+      const nextP = parts[++i];
+      const pattern = getPattern(p, nextP) || (nextP === void 0 && p && p.indexOf("*") === p.length - 1 ? p : null);
+      const isParam = Array.isArray(pattern);
+      const key = isParam ? pattern[0] : pattern || p;
+      const child = curNode.#children[key] ||= new _Node2();
+      if (pattern && !child.#pattern) {
+        child.#pattern = pattern;
+        curNode.#patterns.push(child);
+      }
+      curNode = child;
+      if (isParam) {
+        possibleKeys.add(pattern[1]);
+      }
+    }
+    curNode.#methods.push({
+      [method]: {
+        handler: handler2,
+        possibleKeys: [...possibleKeys],
+        score: ++order
+      }
+    });
+  }
+  #pushHandlerSets(handlerSets, node, method, nodeParams, params) {
+    for (let i = 0, len = node.#methods.length; i < len; i++) {
+      const m = node.#methods[i];
+      const handlerSet = m[method] || m[METHOD_NAME_ALL];
+      if (handlerSet) {
+        handlerSet.params = createNullObject();
+        handlerSets.push(handlerSet);
+        for (let i2 = 0, len2 = handlerSet.possibleKeys.length; i2 < len2; i2++) {
+          const key = handlerSet.possibleKeys[i2];
+          handlerSet.params[key] = params?.[key] && !i2 ? params[key] : nodeParams[key] ?? params?.[key];
+        }
+      }
+    }
+  }
+  search(method, path2) {
+    const handlerSets = [];
+    this.#params = emptyParams;
+    const curNode = this;
+    let curNodes = [curNode];
+    const parts = splitPath(path2);
+    const curNodesQueue = [];
+    const len = parts.length;
+    let partOffsets = null;
+    for (let i = 0; i < len; i++) {
+      const part = parts[i];
+      const isLast = i === len - 1;
+      const tempNodes = [];
+      for (let j = 0, len2 = curNodes.length; j < len2; j++) {
+        const node = curNodes[j];
+        const nextNode = node.#children[part];
+        if (nextNode) {
+          nextNode.#params = node.#params;
+          if (isLast) {
+            if (nextNode.#children["*"]) {
+              this.#pushHandlerSets(handlerSets, nextNode.#children["*"], method, node.#params);
+            }
+            this.#pushHandlerSets(handlerSets, nextNode, method, node.#params);
+          } else {
+            tempNodes.push(nextNode);
+          }
+        }
+        for (const child of node.#patterns) {
+          const pattern = child.#pattern;
+          const params = node.#params === emptyParams ? {} : { ...node.#params };
+          if (typeof pattern === "string") {
+            if (pattern === "*" || part.startsWith(pattern.slice(0, -1))) {
+              this.#pushHandlerSets(handlerSets, child, method, node.#params);
+              if (pattern === "*") {
+                child.#params = params;
+                tempNodes.push(child);
+              }
+            }
+            continue;
+          }
+          const [, name, matcher] = pattern;
+          if (!part && matcher === true) {
+            continue;
+          }
+          if (matcher !== true) {
+            if (!partOffsets) {
+              partOffsets = [];
+              let offset = path2[0] === "/" ? 1 : 0;
+              for (let p = 0; p < len; p++) {
+                partOffsets[p] = offset;
+                offset += parts[p].length + 1;
+              }
+            }
+            const restPathString = path2.slice(partOffsets[i]);
+            const m = matcher.exec(restPathString);
+            if (m) {
+              params[name] = m[0];
+              this.#pushHandlerSets(handlerSets, child, method, node.#params, params);
+              if (m[0].length === restPathString.length && child.#children["*"]) {
+                this.#pushHandlerSets(
+                  handlerSets,
+                  child.#children["*"],
+                  method,
+                  node.#params,
+                  params
+                );
+              }
+              for (const _ in child.#children) {
+                child.#params = params;
+                const componentCount = m[0].match(/\//g)?.length ?? 0;
+                const targetCurNodes = curNodesQueue[componentCount] ||= [];
+                targetCurNodes.push(child);
+                break;
+              }
+              continue;
+            }
+          }
+          if (matcher === true || matcher.test(part)) {
+            params[name] = part;
+            if (isLast) {
+              this.#pushHandlerSets(handlerSets, child, method, params, node.#params);
+              if (child.#children["*"]) {
+                this.#pushHandlerSets(
+                  handlerSets,
+                  child.#children["*"],
+                  method,
+                  params,
+                  node.#params
+                );
+              }
+            } else {
+              child.#params = params;
+              tempNodes.push(child);
+            }
+          }
+        }
+      }
+      const shifted = curNodesQueue.shift();
+      curNodes = shifted ? tempNodes.concat(shifted) : tempNodes;
+    }
+    if (handlerSets[1]) {
+      handlerSets.sort((a, b) => {
+        return a.score - b.score;
+      });
+    }
+    return [handlerSets.map(({ handler: handler2, params }) => [handler2, params])];
+  }
+};
+
+// node_modules/hono/dist/router/trie-router/router.js
+var TrieRouter = class {
+  name = "TrieRouter";
+  #node = new Node2();
+  add(method, path2, handler2) {
+    for (const result of checkOptionalParameter(path2) || [path2]) {
+      this.#node.insert(method, result, handler2);
+    }
+  }
+  match(method, path2) {
+    return this.#node.search(method, path2);
+  }
+};
+
+// node_modules/hono/dist/hono.js
+var Hono2 = class extends Hono {
+  /**
+   * Creates an instance of the Hono class.
+   *
+   * @param options - Optional configuration options for the Hono instance.
+   */
+  constructor(options = {}) {
+    super(options);
+    this.router = options.router ?? new SmartRouter({
+      routers: [new RegExpRouter(), new TrieRouter()]
+    });
+  }
+};
 
 // packages/integration-search/dist/index.js
 function databaseSearchProvider(config) {
@@ -169,9 +2219,6 @@ function createSearchProvider(config) {
       throw new Error(`Unknown search provider: ${config.provider}`);
   }
 }
-
-// packages/server/dist/index.js
-import { Hono as Hono5 } from "hono";
 
 // node_modules/zod/v3/external.js
 var external_exports = {};
@@ -4332,8 +6379,6 @@ function isDuplicateGatewayRefError(err) {
 }
 
 // packages/server/dist/index.js
-import { Hono as Hono6 } from "hono";
-import { Hono as Hono7 } from "hono";
 function createSubscriptionRoutes(config) {
   const { subscriptionProvider: subs } = config;
   const app2 = new Hono2();
@@ -4400,15 +6445,15 @@ function createSubscriptionRoutes(config) {
 }
 function badgeClass(status) {
   const classes = {
-    pending: "bg-yellow-100 text-yellow-800",
-    paid: "bg-green-100 text-green-800",
-    fulfilled: "bg-blue-100 text-blue-800",
-    cancelled: "bg-red-100 text-red-800",
-    active: "bg-green-100 text-green-800",
-    draft: "bg-slate-100 text-slate-800",
-    archived: "bg-red-100 text-red-800"
+    pending: "badge-pending",
+    paid: "badge-paid",
+    fulfilled: "badge-fulfilled",
+    cancelled: "badge-cancelled",
+    active: "badge-active",
+    draft: "badge-draft",
+    archived: "badge-archived"
   };
-  return classes[status] || "bg-slate-100 text-slate-800";
+  return classes[status] || "badge-draft";
 }
 function adminLayout(title, content, navActive) {
   return `<!DOCTYPE html>
@@ -4417,20 +6462,20 @@ function adminLayout(title, content, navActive) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} \u2014 TillKit Admin</title>
-  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/admin/styles.css">
   <script src="https://unpkg.com/htmx.org@1.9.12"></script>
 </head>
-<body class="bg-slate-50">
-  <div class="flex min-h-screen">
-    <nav class="w-64 bg-slate-900 text-white flex-shrink-0">
-      <div class="p-6"><h2 class="text-lg font-bold tracking-tight">TillKit Admin</h2></div>
-      <div class="px-3">
-        <a href="/admin" class="block px-4 py-2.5 rounded-lg mb-1 transition ${navActive === "dashboard" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"}">\u{1F4CA} Dashboard</a>
-        <a href="/admin/orders" class="block px-4 py-2.5 rounded-lg mb-1 transition ${navActive === "orders" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"}">\u{1F4E6} Orders</a>
-        <a href="/admin/products" class="block px-4 py-2.5 rounded-lg transition ${navActive === "products" ? "bg-blue-600 text-white" : "text-slate-400 hover:bg-slate-800 hover:text-white"}">\u{1F3F7}\uFE0F Products</a>
-      </div>
+<body>
+  <div class="admin-layout">
+    <nav class="admin-sidebar">
+      <div class="admin-brand">TillKit Admin</div>
+      <a href="/admin" class="${navActive === "dashboard" ? "active" : ""}">\u{1F4CA} Dashboard</a>
+      <a href="/admin/orders" class="${navActive === "orders" ? "active" : ""}">\u{1F4E6} Orders</a>
+      <a href="/admin/products" class="${navActive === "products" ? "active" : ""}">\u{1F3F7}\uFE0F Products</a>
     </nav>
-    <main class="flex-1 p-8 overflow-auto">${content}</main>
+    <main class="admin-main">
+      ${content}
+    </main>
   </div>
 </body>
 </html>`;
@@ -4440,7 +6485,7 @@ function formatCurrency(cents) {
 }
 function createAdminRoutes(config) {
   const { database: db, features = { variants: true, collections: false, inventoryTracking: true, subscriptions: false, multiCurrency: false }, searchService } = config;
-  const app2 = new Hono3();
+  const app2 = new Hono2();
   app2.get("/", async (c) => {
     const [ordersResult, productsResult] = await Promise.all([db.orders.list({ limit: 100 }), db.products.list({ limit: 1 })]);
     const today = /* @__PURE__ */ new Date();
@@ -4448,25 +6493,25 @@ function createAdminRoutes(config) {
     const todaysOrders = ordersResult.items.filter((o) => new Date(o.createdAt) >= today);
     const revenue = todaysOrders.reduce((sum, o) => sum + (o.total || 0), 0);
     const content = `
-      <div class="flex items-center justify-between mb-8"><h1 class="text-2xl font-bold text-slate-900">Dashboard</h1></div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-        <div class="bg-white rounded-xl p-6 shadow-sm"><div class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Today's Revenue</div><div class="text-3xl font-bold text-slate-900">${formatCurrency(revenue)}</div></div>
-        <div class="bg-white rounded-xl p-6 shadow-sm"><div class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Today's Orders</div><div class="text-3xl font-bold text-slate-900">${todaysOrders.length}</div></div>
-        <div class="bg-white rounded-xl p-6 shadow-sm"><div class="text-sm font-medium text-slate-500 uppercase tracking-wide mb-2">Total Products</div><div class="text-3xl font-bold text-slate-900">${productsResult.total}</div></div>
+      <div class="admin-header"><h1>Dashboard</h1></div>
+      <div class="admin-stats">
+        <div class="admin-stat-card"><div class="stat-label">Today's Revenue</div><div class="stat-value">${formatCurrency(revenue)}</div></div>
+        <div class="admin-stat-card"><div class="stat-label">Today's Orders</div><div class="stat-value">${todaysOrders.length}</div></div>
+        <div class="admin-stat-card"><div class="stat-label">Total Products</div><div class="stat-value">${productsResult.total}</div></div>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200"><h3 class="font-semibold text-slate-900">Recent Orders</h3></div>
-        <table class="w-full">
-          <thead><tr><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th></tr></thead>
+      <div class="admin-card">
+        <h3>Recent Orders</h3>
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Total</th><th>Date</th></tr></thead>
           <tbody>
-            ${ordersResult.items.slice(0, 5).map((o) => `<tr class="border-t border-slate-200">
-              <td class="px-6 py-4 text-sm text-slate-900"><a href="/admin/orders/${o.id}" class="text-blue-600 hover:underline">${o.orderNumber || o.id}</a></td>
-              <td class="px-6 py-4 text-sm text-slate-900">${o.email || "Guest"}</td>
-              <td class="px-6 py-4 text-sm"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass(o.status)}">${o.status}</span></td>
-              <td class="px-6 py-4 text-sm text-slate-900">${formatCurrency(o.total || 0)}</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${new Date(o.createdAt).toLocaleDateString()}</td>
+            ${ordersResult.items.slice(0, 5).map((o) => `<tr>
+              <td><a href="/admin/orders/${o.id}">${o.orderNumber || o.id}</a></td>
+              <td>${o.email || "Guest"}</td>
+              <td><span class="badge ${badgeClass(o.status)}">${o.status}</span></td>
+              <td>${formatCurrency(o.total || 0)}</td>
+              <td>${new Date(o.createdAt).toLocaleDateString()}</td>
             </tr>`).join("")}
-            ${ordersResult.items.length === 0 ? '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">No orders yet</td></tr>' : ""}
+            ${ordersResult.items.length === 0 ? '<tr><td colspan="5" class="empty">No orders yet</td></tr>' : ""}
           </tbody>
         </table>
       </div>`;
@@ -4476,10 +6521,10 @@ function createAdminRoutes(config) {
     const status = c.req.query("status");
     const result = await db.orders.list({ limit: 50, filters: status ? { status } : void 0 });
     const content = `
-      <div class="flex items-center justify-between mb-6"><h1 class="text-2xl font-bold text-slate-900">Orders</h1></div>
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200">
-          <form method="get"><select name="status" onchange="this.form.submit()" class="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+      <div class="admin-header"><h1>Orders</h1></div>
+      <div class="admin-card">
+        <div class="admin-filters">
+          <form method="get"><select name="status" onchange="this.form.submit()">
             <option value="">All Statuses</option>
             <option value="pending" ${status === "pending" ? "selected" : ""}>Pending</option>
             <option value="paid" ${status === "paid" ? "selected" : ""}>Paid</option>
@@ -4487,18 +6532,18 @@ function createAdminRoutes(config) {
             <option value="cancelled" ${status === "cancelled" ? "selected" : ""}>Cancelled</option>
           </select></form>
         </div>
-        <table class="w-full">
-          <thead><tr><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Order</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Customer</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Total</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Date</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th></tr></thead>
+        <table>
+          <thead><tr><th>Order</th><th>Customer</th><th>Status</th><th>Total</th><th>Date</th><th>Actions</th></tr></thead>
           <tbody>
-            ${result.items.map((o) => `<tr class="border-t border-slate-200">
-              <td class="px-6 py-4 text-sm text-slate-900">${o.orderNumber || o.id}</td>
-              <td class="px-6 py-4 text-sm text-slate-900">${o.email || "Guest"}</td>
-              <td class="px-6 py-4 text-sm"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass(o.status)}">${o.status}</span></td>
-              <td class="px-6 py-4 text-sm text-slate-900">${formatCurrency(o.total || 0)}</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${new Date(o.createdAt).toLocaleDateString()}</td>
-              <td class="px-6 py-4 text-sm"><a href="/admin/orders/${o.id}" class="px-3 py-1.5 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800">View</a></td>
+            ${result.items.map((o) => `<tr>
+              <td>${o.orderNumber || o.id}</td>
+              <td>${o.email || "Guest"}</td>
+              <td><span class="badge ${badgeClass(o.status)}">${o.status}</span></td>
+              <td>${formatCurrency(o.total || 0)}</td>
+              <td>${new Date(o.createdAt).toLocaleDateString()}</td>
+              <td><a class="btn btn-sm" href="/admin/orders/${o.id}">View</a></td>
             </tr>`).join("")}
-            ${result.items.length === 0 ? '<tr><td colspan="6" class="px-6 py-8 text-center text-slate-500">No orders found</td></tr>' : ""}
+            ${result.items.length === 0 ? '<tr><td colspan="6" class="empty">No orders found</td></tr>' : ""}
           </tbody>
         </table>
       </div>`;
@@ -4506,33 +6551,34 @@ function createAdminRoutes(config) {
   });
   app2.get("/orders/:id", async (c) => {
     const id = c.req.param("id");
-    const order = await db.orders.get(id);
-    if (!order) return c.notFound();
+    const order2 = await db.orders.get(id);
+    if (!order2) return c.notFound();
     const content = `
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-900">Order ${order.orderNumber || order.id}</h1>
-        <a href="/admin/orders" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">\u2190 Back</a>
+      <div class="admin-header">
+        <h1>Order ${order2.orderNumber || order2.id}</h1>
+        <a class="btn" href="/admin/orders">\u2190 Back</a>
       </div>
-      <div class="bg-white rounded-xl shadow-sm p-6 mb-6">
-        <p class="mb-2"><strong class="text-slate-700">Customer:</strong> ${order.email || "Guest"}</p>
-        <p class="mb-2"><strong class="text-slate-700">Status:</strong> <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass(order.status)}">${order.status}</span></p>
-        <p class="mb-2"><strong class="text-slate-700">Total:</strong> ${formatCurrency(order.total || 0)}</p>
-        <p class="mb-2"><strong class="text-slate-700">Subtotal:</strong> ${formatCurrency(order.subtotal || 0)}</p>
-        <p class="mb-2"><strong class="text-slate-700">Currency:</strong> ${order.currency}</p>
-        <p><strong class="text-slate-700">Date:</strong> ${new Date(order.createdAt).toLocaleString()}</p>
+      <div class="admin-card">
+        <p><strong>Customer:</strong> ${order2.email || "Guest"}</p>
+        <p><strong>Status:</strong> <span class="badge ${badgeClass(order2.status)}">${order2.status}</span></p>
+        <p><strong>Total:</strong> ${formatCurrency(order2.total || 0)}</p>
+        <p><strong>Subtotal:</strong> ${formatCurrency(order2.subtotal || 0)}</p>
+        <p><strong>Currency:</strong> ${order2.currency}</p>
+        <p><strong>Date:</strong> ${new Date(order2.createdAt).toLocaleString()}</p>
       </div>
-      <div class="bg-white rounded-xl shadow-sm p-6">
-        <h3 class="font-semibold text-slate-900 mb-4">Update Status</h3>
-        <form method="post" action="/admin/orders/${order.id}/status">
-          <div class="mb-4"><label class="block text-sm font-medium text-slate-700 mb-2">Status</label>
-            <select name="status" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="pending" ${order.status === "pending" ? "selected" : ""}>Pending</option>
-              <option value="paid" ${order.status === "paid" ? "selected" : ""}>Paid</option>
-              <option value="fulfilled" ${order.status === "fulfilled" ? "selected" : ""}>Fulfilled</option>
-              <option value="cancelled" ${order.status === "cancelled" ? "selected" : ""}>Cancelled</option>
+      <div class="admin-card">
+        <h3>Update Status</h3>
+        <form method="post" action="/admin/orders/${order2.id}/status">
+          <div class="form-group">
+            <label>Status</label>
+            <select name="status">
+              <option value="pending" ${order2.status === "pending" ? "selected" : ""}>Pending</option>
+              <option value="paid" ${order2.status === "paid" ? "selected" : ""}>Paid</option>
+              <option value="fulfilled" ${order2.status === "fulfilled" ? "selected" : ""}>Fulfilled</option>
+              <option value="cancelled" ${order2.status === "cancelled" ? "selected" : ""}>Cancelled</option>
             </select>
           </div>
-          <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Update Status</button>
+          <button type="submit" class="btn">Update Status</button>
         </form>
       </div>`;
     return c.html(adminLayout("Order Details", content, "orders"));
@@ -4569,32 +6615,30 @@ function createAdminRoutes(config) {
       result = await db.products.list({ limit: 20, offset: (page - 1) * 20 });
     }
     const content = `
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-900">Products</h1>
-        <a href="/admin/products/new" class="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Create Product</a>
+      <div class="admin-header">
+        <h1>Products</h1>
+        <a class="btn" href="/admin/products/new">Create Product</a>
       </div>
-      <div class="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-200">
-          <form method="get" action="/admin/products" class="flex items-center gap-2">
-            <input type="search" name="q" value="${q || ""}" placeholder="Search products..." class="px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-            <button type="submit" class="px-4 py-2 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800">Search</button>
-            ${q ? '<a href="/admin/products" class="px-4 py-2 text-sm font-medium text-slate-700 bg-slate-200 rounded-lg hover:bg-slate-300">Clear</a>' : ""}
-          </form>
-        </div>
-        <table class="w-full">
-          <thead><tr><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Name</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Slug</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Price</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Status</th><th class="px-6 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th></tr></thead>
+      <div class="admin-card">
+        <form method="get" action="/admin/products" class="admin-search">
+          <input type="search" name="q" value="${q || ""}" placeholder="Search products..." />
+          <button type="submit" class="btn btn-sm">Search</button>
+          ${q ? '<a href="/admin/products" class="btn btn-sm">Clear</a>' : ""}
+        </form>
+        <table>
+          <thead><tr><th>Name</th><th>Slug</th><th>Price</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
-            ${result.items.map((p) => `<tr class="border-t border-slate-200">
-              <td class="px-6 py-4 text-sm font-medium text-slate-900">${p.name}</td>
-              <td class="px-6 py-4 text-sm text-slate-500">${p.slug}</td>
-              <td class="px-6 py-4 text-sm text-slate-900">${formatCurrency(p.price || 0)}</td>
-              <td class="px-6 py-4 text-sm"><span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${badgeClass(p.status)}">${p.status}</span></td>
-              <td class="px-6 py-4 text-sm flex items-center gap-2">
-                <a href="/admin/products/${p.id}/edit" class="px-3 py-1.5 text-sm font-medium text-white bg-slate-900 rounded-lg hover:bg-slate-800">Edit</a>
-                <button class="px-3 py-1.5 text-sm font-medium text-red-600 hover:bg-red-50 rounded-lg" hx-delete="/admin/products/${p.id}" hx-confirm="Delete ${p.name}?" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
+            ${result.items.map((p) => `<tr>
+              <td><strong>${p.name}</strong></td>
+              <td>${p.slug}</td>
+              <td>${formatCurrency(p.price || 0)}</td>
+              <td><span class="badge ${badgeClass(p.status)}">${p.status}</span></td>
+              <td class="actions">
+                <a class="btn btn-sm" href="/admin/products/${p.id}/edit">Edit</a>
+                <button class="btn btn-sm btn-danger" hx-delete="/admin/products/${p.id}" hx-confirm="Delete ${p.name}?" hx-target="closest tr" hx-swap="outerHTML">Delete</button>
               </td>
             </tr>`).join("")}
-            ${result.items.length === 0 ? '<tr><td colspan="5" class="px-6 py-8 text-center text-slate-500">No products yet</td></tr>' : ""}
+            ${result.items.length === 0 ? '<tr><td colspan="5" class="empty">No products yet</td></tr>' : ""}
           </tbody>
         </table>
       </div>`;
@@ -4604,23 +6648,23 @@ function createAdminRoutes(config) {
     const showVariants = features.variants;
     const showInventory = features.inventoryTracking;
     const content = `
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-900">Create Product</h1>
-        <a href="/admin/products" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">\u2190 Back</a>
+      <div class="admin-header">
+        <h1>Create Product</h1>
+        <a class="btn" href="/admin/products">\u2190 Back</a>
       </div>
-      <form method="post" action="/admin/products" class="bg-white rounded-xl shadow-sm p-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Name</label><input type="text" name="name" placeholder="Product name" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Slug</label><input type="text" name="slug" placeholder="product-slug" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+      <form method="post" action="/admin/products" class="admin-card admin-form">
+        <div class="form-row">
+          <div class="form-group"><label>Name</label><input type="text" name="name" placeholder="Product name" required /></div>
+          <div class="form-group"><label>Slug</label><input type="text" name="slug" placeholder="product-slug" required /></div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Price (cents)</label><input type="number" name="price" placeholder="1999" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Status</label><select name="status" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="draft">Draft</option><option value="active" selected>Active</option><option value="archived">Archived</option></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>Price (cents)</label><input type="number" name="price" placeholder="1999" required /></div>
+          <div class="form-group"><label>Status</label><select name="status"><option value="draft">Draft</option><option value="active" selected>Active</option><option value="archived">Archived</option></select></div>
         </div>
-        <div class="mb-6"><label class="block text-sm font-medium text-slate-700 mb-2">Description</label><textarea name="description" placeholder="Product description..." class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows="4"></textarea></div>
-        ${showInventory ? `<div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6"><div><label class="block text-sm font-medium text-slate-700 mb-2">Stock Quantity</label><input type="number" name="stock" placeholder="100" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div><div><label class="block text-sm font-medium text-slate-700 mb-2">Track Inventory</label><select name="trackInventory" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="true" selected>Yes</option><option value="false">No</option></select></div></div>` : ""}
-        ${showVariants ? `<div class="border-t border-slate-200 pt-6 mb-6"><h3 class="font-semibold text-slate-900 mb-2">Variants</h3><p class="text-slate-600 text-sm">Variants are enabled. Define them after creation.</p></div>` : ""}
-        <button type="submit" class="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Create Product</button>
+        <div class="form-group"><label>Description</label><textarea name="description" placeholder="Product description..."></textarea></div>
+        ${showInventory ? `<div class="form-row"><div class="form-group"><label>Stock Quantity</label><input type="number" name="stock" placeholder="100" /></div><div class="form-group"><label>Track Inventory</label><select name="trackInventory"><option value="true" selected>Yes</option><option value="false">No</option></select></div></div>` : ""}
+        ${showVariants ? `<div class="admin-card"><h3>Variants</h3><p class="help-text">Variants are enabled. Define them after creation.</p></div>` : ""}
+        <button type="submit" class="btn">Create Product</button>
       </form>`;
     return c.html(adminLayout("Create Product", content, "products"));
   });
@@ -4651,23 +6695,23 @@ function createAdminRoutes(config) {
     const showVariants = features.variants;
     const showInventory = features.inventoryTracking;
     const content = `
-      <div class="flex items-center justify-between mb-6">
-        <h1 class="text-2xl font-bold text-slate-900">Edit Product</h1>
-        <a href="/admin/products" class="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-lg hover:bg-slate-50">\u2190 Back</a>
+      <div class="admin-header">
+        <h1>Edit Product</h1>
+        <a class="btn" href="/admin/products">\u2190 Back</a>
       </div>
-      <form method="post" action="/admin/products/${product.id}" class="bg-white rounded-xl shadow-sm p-6">
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Name</label><input type="text" name="name" value="${product.name || ""}" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Slug</label><input type="text" name="slug" value="${product.slug || ""}" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
+      <form method="post" action="/admin/products/${product.id}" class="admin-card admin-form">
+        <div class="form-row">
+          <div class="form-group"><label>Name</label><input type="text" name="name" value="${product.name || ""}" required /></div>
+          <div class="form-group"><label>Slug</label><input type="text" name="slug" value="${product.slug || ""}" required /></div>
         </div>
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Price (cents)</label><input type="number" name="price" value="${product.price || 0}" required class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>
-          <div><label class="block text-sm font-medium text-slate-700 mb-2">Status</label><select name="status" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"><option value="draft" ${product.status === "draft" ? "selected" : ""}>Draft</option><option value="active" ${product.status === "active" ? "selected" : ""}>Active</option><option value="archived" ${product.status === "archived" ? "selected" : ""}>Archived</option></select></div>
+        <div class="form-row">
+          <div class="form-group"><label>Price (cents)</label><input type="number" name="price" value="${product.price || 0}" required /></div>
+          <div class="form-group"><label>Status</label><select name="status"><option value="draft" ${product.status === "draft" ? "selected" : ""}>Draft</option><option value="active" ${product.status === "active" ? "selected" : ""}>Active</option><option value="archived" ${product.status === "archived" ? "selected" : ""}>Archived</option></select></div>
         </div>
-        <div class="mb-6"><label class="block text-sm font-medium text-slate-700 mb-2">Description</label><textarea name="description" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" rows="4">${product.description || ""}</textarea></div>
-        ${showInventory ? `<div class="mb-6"><label class="block text-sm font-medium text-slate-700 mb-2">Stock Quantity</label><input type="number" name="stock" value="${product.inventory?.available || 0}" class="w-full px-4 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" /></div>` : ""}
-        ${showVariants && product.variants?.length ? `<div class="border-t border-slate-200 pt-6 mb-6"><h3 class="font-semibold text-slate-900 mb-4">Variants (${product.variants.length})</h3><table class="w-full"><thead><tr><th class="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">SKU</th><th class="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Options</th><th class="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Price</th><th class="px-4 py-2 text-left text-xs font-semibold text-slate-500 uppercase">Stock</th></tr></thead><tbody>${product.variants.map((v) => `<tr class="border-t border-slate-200"><td class="px-4 py-3 text-sm">${v.sku || "-"}</td><td class="px-4 py-3 text-sm">${JSON.stringify(v.options)}</td><td class="px-4 py-3 text-sm">${formatCurrency(v.price || product.price || 0)}</td><td class="px-4 py-3 text-sm">${v.inventory?.available ?? "-"}</td></tr>`).join("")}</tbody></table></div>` : ""}
-        <button type="submit" class="px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700">Update Product</button>
+        <div class="form-group"><label>Description</label><textarea name="description">${product.description || ""}</textarea></div>
+        ${showInventory ? `<div class="form-group"><label>Stock Quantity</label><input type="number" name="stock" value="${product.inventory?.available || 0}" /></div>` : ""}
+        ${showVariants && product.variants?.length ? `<div class="admin-card"><h3>Variants (${product.variants.length})</h3><table><thead><tr><th>SKU</th><th>Options</th><th>Price</th><th>Stock</th></tr></thead><tbody>${product.variants.map((v) => `<tr><td>${v.sku || "-"}</td><td>${JSON.stringify(v.options)}</td><td>${formatCurrency(v.price || product.price || 0)}</td><td>${v.inventory?.available ?? "-"}</td></tr>`).join("")}</tbody></table></div>` : ""}
+        <button type="submit" class="btn">Update Product</button>
       </form>`;
     return c.html(adminLayout("Edit Product", content, "products"));
   });
@@ -4711,9 +6755,9 @@ function createAdminRoutes(config) {
   });
   return app2;
 }
-async function decrementInventoryForOrder(db, order, webhookConfig) {
-  if (!order.items || order.items.length === 0) return;
-  for (const item of order.items) {
+async function decrementInventoryForOrder(db, order2, webhookConfig) {
+  if (!order2.items || order2.items.length === 0) return;
+  for (const item of order2.items) {
     const product = await db.products.get(item.productId);
     if (!product || !product.inventory) continue;
     const oldAvailable = product.inventory.available ?? product.inventory.quantity ?? 0;
@@ -4735,7 +6779,7 @@ async function decrementInventoryForOrder(db, order, webhookConfig) {
           newAvailable,
           delta: -item.quantity,
           reason: "order_paid",
-          orderId: order.id,
+          orderId: order2.id,
           timestamp: (/* @__PURE__ */ new Date()).toISOString()
         });
       } catch (e) {
@@ -4762,7 +6806,7 @@ async function sendInventoryWebhook(config, event) {
   }
 }
 function createWebhookRoutes(config) {
-  const router = new Hono5();
+  const router = new Hono2();
   router.post("/stripe", async (c) => {
     const payload = await c.req.text();
     const signature = c.req.header("stripe-signature") || "";
@@ -4869,9 +6913,9 @@ async function createOrderFromStripeSession({
         `Stripe session ${session.id} is paid but carries no customer email. Creating the order with a placeholder address \u2014 this order cannot be emailed.`
       );
     }
-    let order;
+    let order2;
     try {
-      order = await database2.orders.create({
+      order2 = await database2.orders.create({
         email: email2 || "unknown@example.com",
         gateway: "stripe",
         gatewayRef: session.id,
@@ -4908,7 +6952,7 @@ async function createOrderFromStripeSession({
       }
       throw err;
     }
-    await database2.orders.addTransaction(order.id, {
+    await database2.orders.addTransaction(order2.id, {
       kind: "sale",
       status: "success",
       amount: session.amount_total || 0,
@@ -4921,9 +6965,9 @@ async function createOrderFromStripeSession({
       }
     });
     await database2.cart.clear(actualCartId);
-    await decrementInventoryForOrder(database2, order, inventoryWebhook);
-    console.log("Order created:", order.orderNumber);
-    return order.id;
+    await decrementInventoryForOrder(database2, order2, inventoryWebhook);
+    console.log("Order created:", order2.orderNumber);
+    return order2.id;
   } catch (err) {
     console.error("Failed to create order from session:", err);
     return null;
@@ -6034,8 +8078,8 @@ var stripe = STRIPE_SECRET_KEY && STRIPE_PUBLISHABLE_KEY ? stripeIntegration({
 }) : null;
 function getSessionId(c) {
   const cookie = c.req.header("cookie") || "";
-  const match = cookie.match(/sessionId=([^;]+)/);
-  return match ? match[1] : crypto.randomUUID();
+  const match2 = cookie.match(/sessionId=([^;]+)/);
+  return match2 ? match2[1] : crypto.randomUUID();
 }
 function setSessionCookie(c, sessionId) {
   c.header("Set-Cookie", `sessionId=${sessionId}; Path=/; HttpOnly; SameSite=Lax; Max-Age=2592000`, { append: true });
@@ -6048,13 +8092,13 @@ function setFlash(c, message) {
   c.header("Set-Cookie", `${FLASH_COOKIE}=${encodeURIComponent(message)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=30`, { append: true });
 }
 function takeFlash(c) {
-  const match = (c.req.header("cookie") || "").match(new RegExp(`${FLASH_COOKIE}=([^;]+)`));
-  if (!match)
+  const match2 = (c.req.header("cookie") || "").match(new RegExp(`${FLASH_COOKIE}=([^;]+)`));
+  if (!match2)
     return void 0;
   c.header("Set-Cookie", `${FLASH_COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`, {
     append: true
   });
-  return decodeURIComponent(match[1]);
+  return decodeURIComponent(match2[1]);
 }
 var layout = (title, content, flashMessage) => `<!DOCTYPE html>
 <html>
@@ -6093,8 +8137,7 @@ var layout = (title, content, flashMessage) => `<!DOCTYPE html>
 </html>`;
 
 // dist/routes/checkout.js
-import { Hono as Hono9 } from "hono";
-var checkoutRouter = new Hono9();
+var checkoutRouter = new Hono2();
 async function reconcileCart(sessionId, result) {
   for (const removed of result.removedItems) {
     await database.cart.removeItem(sessionId, removed.itemId);
@@ -6181,11 +8224,11 @@ checkoutRouter.get("/success", async (c) => {
         <a href="/">\u2190 Continue Shopping</a>
       `));
   }
-  const order = await database.orders.get(orderId);
+  const order2 = await database.orders.get(orderId);
   return c.html(layout("Thank You!", `
       <div class="success-page">
         <h1>\u{1F389} Thank You for Your Order!</h1>
-        <p>Order number: <strong>${order?.orderNumber ?? orderId}</strong></p>
+        <p>Order number: <strong>${order2?.orderNumber ?? orderId}</strong></p>
         <p>We've received your order.</p>
         <a href="/" class="button-primary">Continue Shopping</a>
       </div>
@@ -6203,8 +8246,7 @@ checkoutRouter.get("/cancel", async (c) => {
 });
 
 // dist/routes/webhooks.js
-import { Hono as Hono10 } from "hono";
-var webhooksRouter = new Hono10();
+var webhooksRouter = new Hono2();
 if (stripe && process.env.STRIPE_WEBHOOK_SECRET) {
   const inventoryWebhookConfig = process.env.INVENTORY_WEBHOOK_URL ? {
     url: process.env.INVENTORY_WEBHOOK_URL,
@@ -6226,7 +8268,7 @@ var __filename = fileURLToPath(import.meta.url);
 var __dirname = path.dirname(__filename);
 function createStarterApp(deps) {
   const { database: database2, stripe: stripe2, search: search2, subscriptionProvider: subscriptionProvider2 } = deps;
-  const app2 = new Hono11();
+  const app2 = new Hono2();
   app2.get("/", async (c) => {
     const products = await database2.products.list({ limit: 6 });
     const html = layout("Open-source e-commerce starter", `
@@ -6249,38 +8291,102 @@ function createStarterApp(deps) {
       </div>
 
       <div style="background: var(--bg-muted); padding: 60px 20px; margin: 0 -20px; border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
-        <div style="max-width: 800px; margin: 0 auto; text-align: center;">
-          <h2 style="font-size: 1.5rem; margin-bottom: 12px;">Need a custom store?</h2>
-          <p style="color: var(--text-muted); margin-bottom: 24px;">
-            I build production-ready e-commerce sites on top of TillKit. 
-            Custom themes, integrations, deployments \u2014 done for you.
+        <div style="max-width: 960px; margin: 0 auto; text-align: center;">
+          <h2 style="font-size: 1.6rem; margin-bottom: 8px;">Need a custom store?</h2>
+          <p style="color: var(--text-muted); margin-bottom: 32px; font-size: 0.95rem;">
+            Production-ready e-commerce built on TillKit. You own the code, the data, and the infrastructure.
           </p>
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; max-width: 600px; margin: 0 auto;">
-            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center;">
-              <div style="font-size: 1.3rem; font-weight: 700;">$500</div>
-              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Basic Setup</div>
-              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
-                Deploy + configure products + Stripe connect
-              </div>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; text-align: left;">
+            <!-- Basic Setup -->
+            <div style="background: white; padding: 24px; border-radius: var(--radius); border: 1px solid var(--border);">
+              <div style="font-size: 1.4rem; font-weight: 700;">$500</div>
+              <div style="font-size: 0.9rem; font-weight: 600; margin-top: 4px;">Basic Setup</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin: 8px 0 12px;">Best for: "I need it working on my stack"</div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 16px; margin: 0;">
+                <li>Deploy to your Vercel + PocketBase</li>
+                <li>Stripe connected & verified</li>
+                <li>Collections schema created</li>
+                <li>14 days email support</li>
+              </ul>
+              <a href="mailto:hello@tillkit.dev?subject=Basic%20Setup%20Inquiry" class="button-primary" style="display: block; text-align: center; margin-top: 16px; font-size: 0.85rem; padding: 10px 16px;">Get Started</a>
             </div>
-            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center; border: 2px solid var(--primary);">
-              <div style="font-size: 1.3rem; font-weight: 700; color: var(--primary);">$2,000</div>
-              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Custom Store</div>
-              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
-                Custom theme, integrations, full deployment
-              </div>
+            <!-- BYOPB Pro -->
+            <div style="background: white; padding: 24px; border-radius: var(--radius); border: 2px solid var(--primary);">
+              <div style="font-size: 1.4rem; font-weight: 700; color: var(--primary);">$1,000</div>
+              <div style="font-size: 0.9rem; font-weight: 600; margin-top: 4px;">BYOPB Pro</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin: 8px 0 12px;">Best for: "I want a solid technical foundation"</div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 16px; margin: 0;">
+                <li>Everything in Basic Setup</li>
+                <li>Security hardening + auth audit</li>
+                <li>Custom theme (3 built-ins)</li>
+                <li>CI/CD pipeline configured</li>
+                <li>Architecture docs for your team</li>
+                <li>30 days Slack/Discord support</li>
+              </ul>
+              <a href="mailto:hello@tillkit.dev?subject=BYOPB%20Pro%20Inquiry" class="button-primary" style="display: block; text-align: center; margin-top: 16px; font-size: 0.85rem; padding: 10px 16px;">Book a Call</a>
             </div>
-            <div style="background: white; padding: 20px; border-radius: var(--radius); text-align: center;">
-              <div style="font-size: 1.3rem; font-weight: 700;">$300/mo</div>
-              <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 4px;">Ongoing Care</div>
-              <div style="font-size: 0.8rem; color: var(--text-muted); margin-top: 8px;">
-                Hosting, updates, maintenance
-              </div>
+            <!-- Custom Store -->
+            <div style="background: white; padding: 24px; border-radius: var(--radius); border: 1px solid var(--border);">
+              <div style="font-size: 1.4rem; font-weight: 700;">$2,000</div>
+              <div style="font-size: 0.9rem; font-weight: 600; margin-top: 4px;">Custom Store</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin: 8px 0 12px;">Best for: "I need it to look like my brand"</div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 16px; margin: 0;">
+                <li>Everything in BYOPB Pro</li>
+                <li>Custom theme & components</li>
+                <li>Full integrations (search, subscriptions)</li>
+                <li>60 days priority support</li>
+              </ul>
+              <a href="mailto:hello@tillkit.dev?subject=Custom%20Store%20Inquiry" class="button-primary" style="display: block; text-align: center; margin-top: 16px; font-size: 0.85rem; padding: 10px 16px; background: #1a1a1a;">Book Discovery Call</a>
+            </div>
+            <!-- Ongoing Care -->
+            <div style="background: white; padding: 24px; border-radius: var(--radius); border: 1px solid var(--border);">
+              <div style="font-size: 1.4rem; font-weight: 700;">$300<span style="font-size: 0.9rem; font-weight: 400;">/mo</span></div>
+              <div style="font-size: 0.9rem; font-weight: 600; margin-top: 4px;">Ongoing Care</div>
+              <div style="font-size: 0.8rem; color: var(--text-muted); margin: 8px 0 12px;">Best for: "I want you managing everything"</div>
+              <ul style="font-size: 0.8rem; color: var(--text-muted); padding-left: 16px; margin: 0;">
+                <li>Managed hosting on Fly.io</li>
+                <li>Monthly updates & security patches</li>
+                <li>Priority support</li>
+                <li>Cancel anytime</li>
+              </ul>
+              <a href="mailto:hello@tillkit.dev?subject=Ongoing%20Care%20Inquiry" class="button-primary" style="display: block; text-align: center; margin-top: 16px; font-size: 0.85rem; padding: 10px 16px;">Subscribe</a>
             </div>
           </div>
-          <a href="mailto:hello@tillkit.dev" style="display: inline-block; margin-top: 24px; color: var(--primary); font-weight: 500;">
-            hello@tillkit.dev \u2192
-          </a>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 16px;">
+            <a href="/setup-checklist" style="color: var(--primary); text-decoration: underline;">See what I need to get started \u2192</a>
+          </p>
+        </div>
+      </div>
+
+      <!-- YOU OWN EVERYTHING -->
+      <div style="padding: 60px 20px; text-align: center;">
+        <div style="max-width: 700px; margin: 0 auto;">
+          <h2 style="font-size: 1.5rem; margin-bottom: 16px;">You Own Everything</h2>
+          <p style="color: var(--text-muted); margin-bottom: 24px; font-size: 0.95rem;">
+            TillKit is open-source and built on open-source. No vendor lock-in. No proprietary black boxes.
+            If we stop working together, you keep everything.
+          </p>
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; text-align: left; font-size: 0.85rem; color: var(--text-muted);">
+            <div style="padding: 16px; background: var(--bg-muted); border-radius: var(--radius);">
+              <strong style="color: var(--text); display: block; margin-bottom: 4px;">\u{1F4C2} Your Code</strong>
+              Private GitHub repo under your account. Full source access from day one.
+            </div>
+            <div style="padding: 16px; background: var(--bg-muted); border-radius: var(--radius);">
+              <strong style="color: var(--text); display: block; margin-bottom: 4px;">\u{1F5C4}\uFE0F Your Data</strong>
+              PocketBase instance on your infrastructure. I never touch your customer data.
+            </div>
+            <div style="padding: 16px; background: var(--bg-muted); border-radius: var(--radius);">
+              <strong style="color: var(--text); display: block; margin-bottom: 4px;">\u{1F4B3} Your Payments</strong>
+              Stripe connected to your account. Money flows directly to you.
+            </div>
+            <div style="padding: 16px; background: var(--bg-muted); border-radius: var(--radius);">
+              <strong style="color: var(--text); display: block; margin-bottom: 4px;">\u{1F680} Your Infra</strong>
+              Deployed to your Vercel + Fly.io accounts. You control billing and access.
+            </div>
+          </div>
+          <div style="margin-top: 24px; padding: 16px; background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius); text-align: left; font-size: 0.85rem; color: #166534;">
+            <strong>Leaving is easy.</strong> Transfer your GitHub repo to your team. Export your PocketBase data (one SQLite file). Point your domain wherever you want. No migration fees, no data ransom.
+          </div>
         </div>
       </div>
 
@@ -6481,6 +8587,82 @@ function createStarterApp(deps) {
     } catch {
       return c.redirect("/cart");
     }
+  });
+  app2.get("/setup-checklist", async (c) => {
+    const html = layout("BYOPB Setup Checklist", `
+      <div style="max-width: 700px; margin: 0 auto; padding: 40px 20px;">
+        <h1 style="font-size: 1.8rem; margin-bottom: 8px;">BYOPB Setup Checklist</h1>
+        <p style="color: var(--text-muted); margin-bottom: 32px; font-size: 0.95rem;">
+          Here's what I need from you before we start building. <strong>Already have some of this?</strong> No worries \u2014 we'll skip those steps.
+        </p>
+
+        <div style="margin-bottom: 32px; padding: 16px; background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius);">
+          <strong style="color: #1e40af;">\u{1F4A1} Pro tip:</strong> <span style="color: #1e40af;">
+            Don't have hosting yet? I can provision everything on your behalf and transfer it later. 
+            Or if you already have a PocketBase instance running somewhere, just send me the URL.
+          </span>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">1. Infrastructure</h2>
+          <ul style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.8; padding-left: 20px;">
+            <li><strong>Vercel account</strong> (or your preferred Node.js host) \u2014 where the storefront lives</li>
+            <li><strong>PocketBase instance</strong> \u2014 where products, orders, and customers live. Can be:
+              <ul>
+                <li>Self-hosted (Fly.io, Railway, Hetzner, your VPS)</li>
+                <li>PocketHost.io</li>
+                <li>"I don't have one yet" \u2014 I'll spin one up for you</li>
+              </ul>
+            </li>
+            <li><strong>Domain name</strong> \u2014 or a free Vercel subdomain to start</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">2. Payments</h2>
+          <ul style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.8; padding-left: 20px;">
+            <li><strong>Stripe account</strong> \u2014 money flows directly to you, not me</li>
+            <li><strong>Stripe secret key</strong> (sk_live_...) \u2014 for processing payments</li>
+            <li><strong>Stripe publishable key</strong> (pk_live_...) \u2014 for the checkout form</li>
+            <li><strong>Stripe webhook secret</strong> \u2014 for order confirmation automation</li>
+            <li><strong>Or:</strong> "I don't have Stripe yet" \u2014 I'll walk you through setup in our first call</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">3. Content & Branding</h2>
+          <ul style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.8; padding-left: 20px;">
+            <li><strong>Store name & description</strong> \u2014 for the homepage and SEO</li>
+            <li><strong>Logo</strong> (PNG/SVG) \u2014 optional, can use text logo initially</li>
+            <li><strong>Brand colors</strong> \u2014 hex codes or "use the default TillKit theme"</li>
+            <li><strong>Product photos & descriptions</strong> \u2014 or placeholder products to start</li>
+            <li><strong>Shipping rates</strong> \u2014 flat rate, free shipping threshold, or "TBD"</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom: 32px;">
+          <h2 style="font-size: 1.2rem; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 8px;">4. Access & Communication</h2>
+          <ul style="color: var(--text-muted); font-size: 0.9rem; line-height: 1.8; padding-left: 20px;">
+            <li><strong>GitHub account</strong> \u2014 I create a private repo under your org</li>
+            <li><strong>Preferred communication channel</strong> \u2014 email, Slack, or Discord</li>
+            <li><strong>Timeline</strong> \u2014 when do you need to be live? (rush jobs available for +$200)</li>
+          </ul>
+        </div>
+
+        <div style="padding: 24px; background: var(--bg-muted); border-radius: var(--radius); text-align: center;">
+          <p style="margin-bottom: 16px; font-size: 1rem;">
+            <strong>Ready to get started?</strong>
+          </p>
+          <a href="mailto:hello@tillkit.dev?subject=BYOPB%20Setup%20Inquiry" class="button-primary" style="font-size: 1rem; padding: 14px 28px;">
+            Send me what you have \u2192
+          </a>
+          <p style="font-size: 0.8rem; color: var(--text-muted); margin-top: 12px;">
+            Don't have everything? That's normal. We'll figure it out together.
+          </p>
+        </div>
+      </div>
+      `);
+    return c.html(html);
   });
   app2.route("/checkout", checkoutRouter);
   app2.route("/webhooks", webhooksRouter);
